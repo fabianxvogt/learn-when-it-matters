@@ -8,6 +8,7 @@
     "dev": "node scripts/server.mjs",
     "build": "node scripts/build.mjs",
     "test": "node --test",
-    "experiment": "node scripts/run-experiment.mjs"
+    "experiment": "node scripts/run-experiment.mjs",
+    "experiment:final": "node scripts/run-final-investigation.mjs"
   }
 }

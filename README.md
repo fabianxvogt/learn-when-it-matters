@@ -20,6 +20,19 @@ npm run experiment -- --seeds=5 --horizon=240 --out=outputs/repeated-run.json
 
 The runner uses common seeds, searches a small train-only parameter grid across three update-budget slices, locks the selected policies before held-out streams, and writes per-seed results plus paired bootstrap intervals. It is intentionally small and CPU-only.
 
+The separate final measurement protocol is not the browser demo path:
+
+```sh
+npm run experiment:final -- --out=work/final-investigation.json
+```
+
+It uses train-only calibration to select measured CPU/wall-time bins for both
+model families, retains complete paired held-out rows, and reports
+`inconclusive` rather than manufacturing a fixed-cost claim when timing or
+coverage is not comparable. When strict bins do not intersect, it also reports
+predeclared train-locked upper-cost ceilings without padding cheaper controls.
+Its 600-second CPU and 1,800-second wall limits are intentional.
+
 ## Research contract
 
 The action boundary is strict: the prediction is frozen before `y_t`; a method's pre-label action sees `x_t`, current state and history through `t-1` only. Surprise uses input innovation, not the current residual. The usefulness gate builds a shadow candidate from an already revealed lagged sample, evaluates transfer on the next input after its label arrives, and lets that evidence affect later actions. Probe forwards, candidate gradients, state copies, rejected candidates, and elapsed wall-clock time are exported.
