@@ -1,4 +1,4 @@
-import { DEFAULT_CONFIG, METHOD_DEFS, generateStream, getStreamSpec, mulberry32 } from "./core.js";
+import { DEFAULT_CONFIG, METHOD_DEFS, generateStream, getStreamSpec, mulberry32, normalizeConfig } from "./core.js";
 
 class TinyRecurrentLearner {
   constructor() {
@@ -75,7 +75,7 @@ function decision(methodId, state) {
 }
 
 export async function runRecurrentMethod(methodId, inputStream, inputConfig = {}, progress = () => {}, cancel = () => false) {
-  const config = { ...DEFAULT_CONFIG, ...inputConfig };
+  const config = normalizeConfig(inputConfig);
   const stream = inputStream ?? generateStream(config);
   const model = methodId === "classical" ? new TinyRecurrentRlsLearner() : new TinyRecurrentLearner();
   const random = mulberry32(config.seed + methodId.length * 17);
@@ -182,7 +182,7 @@ export async function runRecurrentMethod(methodId, inputStream, inputConfig = {}
 }
 
 export async function runTinyRecurrentComparison(inputConfig = {}, progress = () => {}, cancel = () => false) {
-  const config = { ...DEFAULT_CONFIG, ...inputConfig };
+  const config = normalizeConfig(inputConfig);
   const stream = generateStream(config);
   const results = [];
   for (let index = 0; index < METHOD_DEFS.length; index += 1) {

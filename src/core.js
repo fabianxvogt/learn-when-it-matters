@@ -46,16 +46,17 @@ function gaussian(rng) {
 
 function normalizeConfig(input = {}) {
   const config = { ...DEFAULT_CONFIG, ...input };
+  const numeric = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
   config.horizon = clamp(Math.round(Number(config.horizon) || DEFAULT_CONFIG.horizon), 60, 1200);
-  config.recurrence = clamp(Number(config.recurrence) || 0, 0, 0.98);
-  config.noise = clamp(Number(config.noise) || 0, 0, 0.45);
-  config.updateBudget = clamp(Math.round(Number(config.updateBudget) || DEFAULT_CONFIG.updateBudget), 1, config.horizon);
+  config.recurrence = clamp(numeric(config.recurrence, 0), 0, 0.98);
+  config.noise = clamp(numeric(config.noise, 0), 0, 0.45);
+  config.updateBudget = clamp(Math.round(numeric(config.updateBudget, DEFAULT_CONFIG.updateBudget)), 1, config.horizon);
   config.seed = Math.round(Number(config.seed) || DEFAULT_CONFIG.seed);
-  config.probeCost = clamp(Number(config.probeCost) || DEFAULT_CONFIG.probeCost, 0, 10);
+  config.probeCost = clamp(numeric(config.probeCost, DEFAULT_CONFIG.probeCost), 0, 10);
   config.probeInterval = clamp(Math.round(Number(config.probeInterval) || DEFAULT_CONFIG.probeInterval), 1, 24);
-  config.gateMargin = clamp(Number(config.gateMargin) || DEFAULT_CONFIG.gateMargin, 0, 0.2);
-  config.surpriseThreshold = clamp(Number(config.surpriseThreshold) || DEFAULT_CONFIG.surpriseThreshold, 0.01, 2);
-  config.changeThreshold = clamp(Number(config.changeThreshold) || DEFAULT_CONFIG.changeThreshold, 0.01, 1);
+  config.gateMargin = clamp(numeric(config.gateMargin, DEFAULT_CONFIG.gateMargin), 0, 0.2);
+  config.surpriseThreshold = clamp(numeric(config.surpriseThreshold, DEFAULT_CONFIG.surpriseThreshold), 0.01, 2);
+  config.changeThreshold = clamp(numeric(config.changeThreshold, DEFAULT_CONFIG.changeThreshold), 0.01, 1);
   config.periodicInterval = clamp(Math.round(Number(config.periodicInterval) || DEFAULT_CONFIG.periodicInterval), 1, 48);
   config.randomProbability = clamp(Number(config.randomProbability) || DEFAULT_CONFIG.randomProbability, 0.01, 1);
   return config;

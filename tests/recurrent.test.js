@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_CONFIG, generateStream } from "../src/core.js";
+import { DEFAULT_CONFIG, generateStream, runMethod } from "../src/core.js";
 import { runRecurrentMethod } from "../src/recurrent.js";
 
 test("tiny recurrent learner emits a bounded, pre-label trace", async () => {
@@ -30,4 +30,13 @@ test("tiny recurrent classical row is an actual RLS comparator", async () => {
   assert.equal(result.model, "tiny-recurrent");
   assert.ok(result.costLedger.matrixOperations > 0);
   assert.equal(result.costLedger.matrixOperations, result.updateCount * 30);
+});
+
+test("linear and recurrent runners share the supported budget domain", async () => {
+  const config = { ...DEFAULT_CONFIG, horizon: 60, updateBudget: 0, seed: 54 };
+  const stream = generateStream(config);
+  const linear = await runMethod("always", stream, config);
+  const recurrent = await runRecurrentMethod("always", stream, config);
+  assert.equal(linear.updateCount, 1);
+  assert.equal(recurrent.updateCount, 1);
 });
