@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="A browser-sized laboratory for selective online learning with causal update gates." />
+    <title>Learn When It Matters</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Learn When It Matters home">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span>Learn when it matters</span>
+        </a>
+        <div class="topbar-meta">
+          <span class="status-dot"></span>
+          <span>local / seeded / no uploads</span>
+          <button class="icon-button" id="themeToggle" type="button" aria-label="Toggle color theme">◐</button>
+        </div>
+      </header>
+
+      <main>
+        <section class="intro-grid">
+          <div>
+            <p class="eyebrow">SELECTIVE ONLINE LEARNING LAB · V1.0</p>
+            <h1>Spend updates<br /><em>where they matter.</em></h1>
+            <p class="lede">A transparent test of whether a causal usefulness gate can lower prediction error without paying for every update.</p>
+          </div>
+          <aside class="question-card">
+            <div class="card-kicker"><span class="signal-icon">↗</span> Research question</div>
+            <p>When recurrence and noise shift, does a gated learner buy lower error per unit of update cost?</p>
+            <div class="contract-row"><span>Predict</span><span class="arrow">→</span><span>observe label</span><span class="arrow">→</span><span>decide</span></div>
+          </aside>
+        </section>
+
+        <section class="workspace" aria-label="Experiment workspace">
+          <aside class="control-panel panel">
+            <div class="panel-heading">
+              <div><p class="eyebrow">01 / STREAM DESIGN</p><h2>Configure a run</h2></div>
+              <span class="version-pill">browser-sized</span>
+            </div>
+
+            <div class="control-section">
+              <label for="horizon">Stream length <output id="horizonValue">480</output></label>
+              <input id="horizon" type="range" min="60" max="1200" step="20" value="480" />
+              <div class="range-hints"><span>60 steps</span><span>1,200 max</span></div>
+            </div>
+
+            <div class="control-section two-col">
+              <label for="recurrence">Recurrence <output id="recurrenceValue">0.82</output></label>
+              <label for="noise">Noise <output id="noiseValue">0.08</output></label>
+              <input id="recurrence" type="range" min="0" max="0.98" step="0.01" value="0.82" />
+              <input id="noise" type="range" min="0" max="0.45" step="0.01" value="0.08" />
+              <span class="field-note">memory in the target</span><span class="field-note">label uncertainty</span>
+            </div>
+
+            <div class="control-section two-col compact-fields">
+              <label for="updateBudget">Update budget</label>
+              <label for="seed">Seed</label>
+              <input id="updateBudget" type="number" min="1" max="1200" step="1" value="120" />
+              <input id="seed" type="number" min="1" max="999999" step="1" value="42" />
+              <span class="field-note">per method</span><span class="field-note">reproducible stream</span>
+            </div>
+
+            <div class="control-section gated-controls">
+              <div class="section-label"><span>Causal gate accounting</span><span class="info-dot" title="Probe cost is deliberately counted in the efficiency view.">i</span></div>
+              <div class="two-col compact-fields">
+                <label for="probeCost">Probe cost</label>
+                <label for="probeInterval">Probe every</label>
+                <input id="probeCost" type="number" min="0" max="10" step="0.5" value="2" />
+                <input id="probeInterval" type="number" min="1" max="24" step="1" value="4" />
+                <span class="field-note">cost units</span><span class="field-note">steps</span>
+              </div>
+            </div>
+
+            <div class="action-stack">
+              <button class="primary-button" id="runButton" type="button"><span class="play-triangle">▶</span> Run comparison</button>
+              <button class="secondary-button" id="cancelButton" type="button" disabled>Cancel run</button>
+            </div>
+            <div class="progress-wrap" id="progressWrap" hidden>
+              <div class="progress-label"><span id="progressLabel">Preparing stream</span><span id="progressValue">0%</span></div>
+              <div class="progress-track"><div id="progressBar"></div></div>
+            </div>
+            <p class="helper-text" id="runStatus" role="status">Ready. The example stream is deterministic.</p>
+          </aside>
+
+          <section class="results-panel">
+            <div class="panel result-overview">
+              <div class="panel-heading results-heading">
+                <div><p class="eyebrow">02 / COMPARISON</p><h2>What did the learner buy?</h2></div>
+                <div class="result-actions">
+                  <button class="text-button" id="saveButton" type="button">Save locally</button>
+                  <button class="text-button" id="exportButton" type="button">Export JSON</button>
+                  <label class="text-button file-button">Import JSON<input id="importInput" type="file" accept="application/json,.json" /></label>
+                </div>
+              </div>
+              <div class="metric-strip">
+                <div class="metric"><span>Best raw MSE</span><strong id="bestMse">—</strong><small id="bestMseMethod">run to measure</small></div>
+                <div class="metric accent-metric"><span>Best error / cost</span><strong id="bestEfficiency">—</strong><small id="bestEfficiencyMethod">probes included</small></div>
+                <div class="metric"><span>Total decisions</span><strong id="decisionCount">—</strong><small>updates + probes</small></div>
+                <div class="metric"><span>Evaluation rule</span><strong class="small-metric">before label</strong><small>no future regime IDs</small></div>
+              </div>
+            </div>
+
+            <div class="panel chart-panel">
+              <div class="chart-header"><div><p class="eyebrow">ERROR TRACE</p><h3>Rolling squared error</h3></div><div class="legend" id="legend"></div></div>
+              <div class="chart-wrap"><canvas id="errorChart" aria-label="Rolling squared error chart"></canvas><div class="chart-empty" id="chartEmpty">Run the comparison to reveal the trace.</div></div>
+              <div class="chart-footer"><span>early stream</span><span>held-out future labels never enter a decision</span><span>late stream</span></div>
+            </div>
+
+            <div class="panel table-panel">
+              <div class="table-heading"><div><p class="eyebrow">METHOD LEDGER</p><h3>Matched accounting</h3></div><span class="table-note">lower is better · update budget applies to every method</span></div>
+              <div class="table-scroll">
+                <table>
+                  <thead><tr><th>Method</th><th>Mean squared error</th><th>Updates</th><th>Probes</th><th>Discarded</th><th>Total cost</th><th>Signal</th></tr></thead>
+                  <tbody id="resultsBody"><tr><td colspan="7" class="empty-cell">No run yet. The seeded example is ready.</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <section class="bottom-grid">
+          <article class="panel contract-card">
+            <p class="eyebrow">03 / CAUSAL CONTRACT</p>
+            <h2>What counts as a fair test?</h2>
+            <div class="contract-list">
+              <div class="contract-item"><span class="check">✓</span><div><strong>Predict before labels</strong><p>Every prediction uses only the current feature and past observed targets.</p></div></div>
+              <div class="contract-item"><span class="check">✓</span><div><strong>Probe cost is visible</strong><p>The gate pays for counterfactual history checks; rejected updates stay in the ledger.</p></div></div>
+              <div class="contract-item"><span class="check">✓</span><div><strong>No latent regime IDs</strong><p>Recurring forcing stays inside the stream generator, hidden from every method.</p></div></div>
+              <div class="contract-item"><span class="check">✓</span><div><strong>Held-out work is local</strong><p>Use the CLI for repeated seeds; this browser run is an instrument, not a final claim.</p></div></div>
+            </div>
+          </article>
+          <article class="panel readout-card">
+            <p class="eyebrow">04 / RESEARCH READOUT</p>
+            <h2>Keep the result honest.</h2>
+            <div class="readout-callout"><span class="callout-mark">∿</span><p id="readoutText">A frontier with no improvement is still a useful negative result. Run the comparison to see whether the gate earns its probe overhead on this stream.</p></div>
+            <div class="readout-meta"><span>Evidence label <strong>EMPIRICAL</strong></span><span>Classification <strong>EXPLORATORY</strong></span></div>
+            <button class="reset-link" id="resetButton" type="button">Reset to example configuration ↺</button>
+          </article>
+        </section>
+
+        <footer class="footer"><span>Learn When It Matters · a local-first research instrument</span><span>Versioned exports · no account · no network data path</span></footer>
+      </main>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

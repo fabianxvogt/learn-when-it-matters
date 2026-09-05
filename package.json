@@ -1,0 +1,13 @@
+{
+  "name": "learn-when-it-matters",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "node scripts/server.mjs",
+    "build": "node scripts/build.mjs",
+    "test": "node --test",
+    "experiment": "node scripts/run-experiment.mjs"
+  }
+}
