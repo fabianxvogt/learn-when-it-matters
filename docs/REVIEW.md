@@ -13,3 +13,5 @@ Classification: **EXPLORATORY** pending independent code/research review. The me
 ## Strongest counterargument
 
 The usefulness gate may simply be a delayed heuristic that cannot outperform tuned controls once shadow-probe compute, state copies, rejected work and elapsed time are charged. This negative result is acceptable and should stop architecture growth.
+
+The current local evidence is narrow: linear RLS is strongest on raw MSE at a higher synthetic matrix-operation cost, and the usefulness gate does not show a universal advantage. The three budget slices are evidence slices, not a formal compute Pareto proof. The recurrent extension now includes a real recurrent RLS comparator; the browser remains a linear preview.

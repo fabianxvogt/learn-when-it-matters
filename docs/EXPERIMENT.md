@@ -8,7 +8,7 @@ At matched accepted-update and measured-compute budgets, can a lagged usefulness
 
 1. Use the browser-sized linear online regressor and seeded stream generator in `src/core.js`; the local-only extension in `src/recurrent.js` repeats the same contract with a tiny recurrent hidden state.
 2. Freeze `ŷ_t` and choose the action before reading `y_t`; callbacks cannot see the current label, current residual, held-out outcomes or hidden regime marker.
-3. Search only a bounded parameter grid on recurring training streams. The CLI freezes the selected periodic/random/surprise/change-point/usefulness parameters separately for each accepted-update budget before evaluating held-out recurring streams with an unseen period/noise setting and a never-repeating control.
+3. Search only a bounded parameter grid on recurring training streams. The CLI freezes the selected periodic/random/surprise/change-point/usefulness parameters separately for each of three accepted-update budget slices before evaluating held-out recurring streams with an unseen period/noise setting and a never-repeating control. These slices are not presented as a formal Pareto frontier.
 4. Run five or more paired seeds by default. Record per-seed MSE, area-under-adaptation proxy (the loss trace), first-step loss, recovery proxy, update count, probe count, discarded candidates, budget-skipped requests, forward passes, candidate gradients, optimizer operations, RLS matrix operations, state copies, total work and elapsed wall-clock time. The runner does not call wall time CPU time.
 5. Use the CLI output's paired differences and deterministic bootstrap interval as uncertainty context. This is not a formal confidence guarantee for arbitrary streams.
 

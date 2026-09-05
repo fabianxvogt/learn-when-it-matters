@@ -13,7 +13,7 @@ State: **verification**
 
 - Independent source/research review against the frozen causal contract.
 - If reviewed and authorized, register/save/deploy the static Site build privately first.
-- Compare the local held-out frontier with the browser example before making any research claim.
+- Compare the local held-out budget slices with the browser example before making any research claim.
 
 ## Later
 
@@ -26,7 +26,7 @@ State: **verification**
 - [x] Always, periodic, random, pre-label surprise, change-point, RLS and lagged usefulness methods.
 - [x] Prediction/action/probe/cost traces; probe forwards, gradients, copies, discarded work and elapsed time.
 - [x] Versioned localStorage save and portable JSON export/import with malformed-input rejection.
-- [x] CPU-only local repeated-run CLI with train-only bounded tuning, frozen update-budget frontiers, held-out recurring and never-repeating controls.
+- [x] CPU-only local repeated-run CLI with train-only bounded tuning, frozen update-budget slices, held-out recurring and never-repeating controls.
 - [x] Tiny recurrent learner runs locally; browser linear preview is labeled separately.
 - [x] Focused README, docs navigation, MIT license and static hosting metadata.
 

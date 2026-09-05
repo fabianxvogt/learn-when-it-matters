@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { DEFAULT_CONFIG, METHOD_DEFS, generateStream, mulberry32, runMethod } from "../src/core.js";
+import { DEFAULT_CONFIG, METHOD_DEFS, generateStream, getStreamSpec, mulberry32, runMethod } from "../src/core.js";
 import { runRecurrentMethod } from "../src/recurrent.js";
 
 const args = Object.fromEntries(process.argv.slice(2).map((arg) => {
@@ -39,13 +39,13 @@ async function trainSelect(methodId, budget) {
   return best;
 }
 
-async function tuneFrontier() {
-  const frontier = {};
+async function tuneBudgetSlices() {
+  const budgetSlices = {};
   for (const budget of budgets) {
-    frontier[budget] = {};
-    for (const method of METHOD_DEFS) frontier[budget][method.id] = await trainSelect(method.id, budget);
+    budgetSlices[budget] = {};
+    for (const method of METHOD_DEFS) budgetSlices[budget][method.id] = await trainSelect(method.id, budget);
   }
-  return frontier;
+  return budgetSlices;
 }
 
 function compactResult(result) {
@@ -66,14 +66,14 @@ function compactResult(result) {
   };
 }
 
-async function evaluateLocked(budget, frontier, variant, count = seeds) {
+async function evaluateLocked(budget, budgetSlices, variant, count = seeds) {
   const runs = [];
   for (let index = 0; index < count; index += 1) {
     const seed = baseConfig.seed + index;
     const stream = streamFor({ ...baseConfig, updateBudget: budget }, seed, variant);
     const results = [];
     for (const method of METHOD_DEFS) {
-      const tuned = frontier[budget][method.id]?.params || {};
+      const tuned = budgetSlices[budget][method.id]?.params || {};
       results.push(compactResult(await runMethod(method.id, stream, { ...baseConfig, ...tuned, updateBudget: budget, seed })));
     }
     runs.push({ seed, streamVariant: variant || "training-recurring", results });
@@ -129,14 +129,14 @@ async function recurrentBatch(variant) {
   return runs;
 }
 
-const frontier = await tuneFrontier();
-const budgetsReport = {};
+const tunedSlices = await tuneBudgetSlices();
+const budgetSlices = {};
 for (const budget of budgets) {
-  const training = await evaluateLocked(budget, frontier, undefined);
-  const heldOutRecurring = await evaluateLocked(budget, frontier, "heldout-recurring");
-  const neverRepeating = await evaluateLocked(budget, frontier, "never-repeating");
-  budgetsReport[budget] = {
-    lockedParameters: frontier[budget],
+  const training = await evaluateLocked(budget, tunedSlices, undefined);
+  const heldOutRecurring = await evaluateLocked(budget, tunedSlices, "heldout-recurring");
+  const neverRepeating = await evaluateLocked(budget, tunedSlices, "never-repeating");
+  budgetSlices[budget] = {
+    lockedParameters: tunedSlices[budget],
     training,
     heldOutRecurring,
     neverRepeating,
@@ -158,13 +158,20 @@ const report = {
   config: baseConfig,
   seeds,
   budgets,
-  frontier: budgetsReport,
+  budgetSlices,
+  streamSpecs: {
+    training: getStreamSpec({ ...baseConfig, streamVariant: undefined }),
+    heldOutRecurring: getStreamSpec({ ...baseConfig, streamVariant: "heldout-recurring" }),
+    neverRepeating: getStreamSpec({ ...baseConfig, streamVariant: "never-repeating" })
+  },
   recurrentModel: {
     model: "tiny-recurrent",
+    inputNormalization: "tanh",
+    comparatorAvailability: "all seven methods, including recurrent RLS for the classical row",
     note: "Local-only recurrent extension; browser remains a linear online-regressor preview.",
     heldOutRecurring: recurrentHeldOut,
     neverRepeating: recurrentNeverRepeating
   }
 };
 writeFileSync(outputPath, JSON.stringify(report, null, 2));
-console.log(`Wrote train-tuned frozen frontiers for budgets ${budgets.join(", ")} and ${seeds} recurrent-model seeds to ${outputPath}`);
+console.log(`Wrote train-tuned frozen budget slices for ${budgets.join(", ")} and ${seeds} recurrent-model seeds to ${outputPath}`);

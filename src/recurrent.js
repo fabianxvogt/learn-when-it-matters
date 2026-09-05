@@ -1,4 +1,4 @@
-import { DEFAULT_CONFIG, METHOD_DEFS, generateStream, mulberry32 } from "./core.js";
+import { DEFAULT_CONFIG, METHOD_DEFS, generateStream, getStreamSpec, mulberry32 } from "./core.js";
 
 class TinyRecurrentLearner {
   constructor() {
@@ -33,6 +33,33 @@ class TinyRecurrentLearner {
   }
 }
 
+class TinyRecurrentRlsLearner extends TinyRecurrentLearner {
+  constructor() {
+    super();
+    this.covariance = [[8, 0, 0], [0, 8, 0], [0, 0, 8]];
+  }
+
+  clone() {
+    const clone = new TinyRecurrentRlsLearner();
+    clone.weights = [...this.weights];
+    clone.hidden = this.hidden;
+    clone.covariance = this.covariance.map((row) => [...row]);
+    return clone;
+  }
+
+  update(view, target) {
+    const lambda = 0.985;
+    const phi = view.features;
+    const pPhi = this.covariance.map((row) => row[0] * phi[0] + row[1] * phi[1] + row[2] * phi[2]);
+    const denominator = lambda + phi[0] * pPhi[0] + phi[1] * pPhi[1] + phi[2] * pPhi[2];
+    const gain = pPhi.map((value) => value / denominator);
+    const error = target - view.prediction;
+    this.weights = this.weights.map((weight, index) => weight + gain[index] * error);
+    this.covariance = this.covariance.map((row, rowIndex) => row.map((value, columnIndex) => (value - gain[rowIndex] * pPhi[columnIndex]) / lambda));
+    this.hidden = view.proposedHidden;
+  }
+}
+
 function historicalLoss(model, history) {
   if (!history.length) return 0;
   return history.reduce((sum, sample) => sum + (model.view(sample.input).prediction - sample.target) ** 2, 0) / history.length;
@@ -50,7 +77,7 @@ function decision(methodId, state) {
 export async function runRecurrentMethod(methodId, inputStream, inputConfig = {}, progress = () => {}, cancel = () => false) {
   const config = { ...DEFAULT_CONFIG, ...inputConfig };
   const stream = inputStream ?? generateStream(config);
-  const model = new TinyRecurrentLearner();
+  const model = methodId === "classical" ? new TinyRecurrentRlsLearner() : new TinyRecurrentLearner();
   const random = mulberry32(config.seed + methodId.length * 17);
   const history = [];
   const predictions = [];
@@ -130,7 +157,7 @@ export async function runRecurrentMethod(methodId, inputStream, inputConfig = {}
   const elapsedMs = (performance.now?.() ?? Date.now()) - startedAt;
   const forwardPasses = stream.length + probeForwards;
   const gradientEvaluations = updateCount + probeGradients;
-  const optimizerOperations = updateCount * 3;
+  const optimizerOperations = methodId === "classical" ? updateCount * 30 : updateCount * 3;
   const candidateGradientOperations = probeGradients * 3;
   const cost = forwardPasses + optimizerOperations + candidateGradientOperations + stateCopies * config.probeCost;
   return {
@@ -150,7 +177,7 @@ export async function runRecurrentMethod(methodId, inputStream, inputConfig = {}
     discardedCandidates,
     budgetSkipped,
     errorPerCost: (totalLoss / stream.length) / Math.max(cost, 1),
-    costLedger: { forwardPasses, probeForwards, gradientEvaluations, candidateGradients: probeGradients, optimizerOperations, matrixOperations: 0, candidateGradientOperations, stateCopies, discardedWork: discardedCandidates, budgetSkipped, elapsedWallMs: Math.max(0, elapsedMs), totalWork: cost }
+    costLedger: { forwardPasses, probeForwards, gradientEvaluations, candidateGradients: probeGradients, optimizerOperations, matrixOperations: methodId === "classical" ? updateCount * 30 : 0, candidateGradientOperations, stateCopies, discardedWork: discardedCandidates, budgetSkipped, elapsedWallMs: Math.max(0, elapsedMs), totalWork: cost }
   };
 }
 
@@ -162,5 +189,5 @@ export async function runTinyRecurrentComparison(inputConfig = {}, progress = ()
     const item = METHOD_DEFS[index];
     results.push(await runRecurrentMethod(item.id, stream, config, (fraction) => progress((index + fraction) / METHOD_DEFS.length), cancel));
   }
-  return { model: "tiny-recurrent", version: 1, config, results };
+  return { model: "tiny-recurrent", version: 1, config, streamSpec: getStreamSpec(config), inputNormalization: "tanh", results };
 }

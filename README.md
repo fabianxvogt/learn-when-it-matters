@@ -18,7 +18,7 @@ For the bounded local comparison:
 npm run experiment -- --seeds=5 --horizon=240 --out=outputs/repeated-run.json
 ```
 
-The runner uses common seeds, searches a small train-only parameter grid across update budgets, locks the selected policies before held-out streams, and writes per-seed results plus paired bootstrap intervals. It is intentionally small and CPU-only.
+The runner uses common seeds, searches a small train-only parameter grid across three update-budget slices, locks the selected policies before held-out streams, and writes per-seed results plus paired bootstrap intervals. It is intentionally small and CPU-only.
 
 ## Research contract
 

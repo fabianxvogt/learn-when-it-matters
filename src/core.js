@@ -86,6 +86,19 @@ export function generateStream(inputConfig = {}) {
   return stream;
 }
 
+export function getStreamSpec(inputConfig = {}) {
+  const config = normalizeConfig(inputConfig);
+  return {
+    variant: config.streamVariant || "training-recurring",
+    recurrencePeriod: config.streamVariant === "heldout-recurring" ? 53 : config.streamVariant === "never-repeating" ? null : 72,
+    slowPeriod: config.streamVariant === "heldout-recurring" ? 137 : 181,
+    noiseScale: config.streamVariant === "heldout-recurring" ? 1.7 : config.streamVariant === "never-repeating" ? 1.25 : 1,
+    inputNoise: config.noise,
+    recurrence: config.recurrence,
+    hiddenRegimeId: false
+  };
+}
+
 class LinearRegressor {
   constructor() {
     this.weights = [0, 0, 0];
@@ -309,6 +322,7 @@ export async function runComparison(inputConfig = {}, progress = () => {}, cance
   return {
     version: 1,
     config,
+    streamSpec: getStreamSpec(config),
     stream,
     results,
     bestByMse: ranked[0].methodId,

@@ -23,3 +23,11 @@ test("tiny recurrent pre-label action is unchanged by the current label", async 
     assert.equal(a.actionTrace[15], b.actionTrace[15], `${method} read current y before its recurrent action`);
   }
 });
+
+test("tiny recurrent classical row is an actual RLS comparator", async () => {
+  const config = { ...DEFAULT_CONFIG, horizon: 60, updateBudget: 12, seed: 53 };
+  const result = await runRecurrentMethod("classical", generateStream(config), config);
+  assert.equal(result.model, "tiny-recurrent");
+  assert.ok(result.costLedger.matrixOperations > 0);
+  assert.equal(result.costLedger.matrixOperations, result.updateCount * 30);
+});
