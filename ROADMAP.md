@@ -1,9 +1,12 @@
 # Roadmap
 
-State: **verification / final investigation implementation frozen for review**
+State: **verification / capped pilot inconclusive; train-only K=5 amendment frozen for review**
 
 ## Now
 
+- Preserve the private capped-pilot result as **INCONCLUSIVE/NON-COMPARABLE**: neither model had a strict common bin or a train-feasible upper ceiling, so no held-out matrix ran.
+- Get independent interpretation review of the exact source/result pair before any new run or research claim.
+- Review the new train-only `raw-batch-cv-k5-v1` amendment at its new source SHA; no new pilot is authorized yet.
 - Run a fresh browser journey on desktop Chromium and a narrow mobile viewport.
 - Verify clean build, tests, save/reload, export/import and malformed JSON rejection.
 - Run the independent counterexample fixtures and the local repeated-seed runner.
@@ -11,10 +14,10 @@ State: **verification / final investigation implementation frozen for review**
 
 ## Next
 
-- Independent source/research review against the frozen causal contract.
+- Any new measured run needs a new explicit owner decision; do not retry, retune, cherry-pick, or grow architecture from this inconclusive result.
 - If reviewed and authorized, register/save/deploy the static Site build privately first.
 - Compare the local held-out budget slices with the browser example before making any research claim.
-- Review `scripts/run-final-investigation.mjs` measurement semantics before the capped serialized pilot; do not call its measured bins a formal Pareto frontier.
+- Review the private capped-pilot report and the amended `scripts/run-final-investigation.mjs` measurement semantics; do not call its empty measured-bin result a frontier or negative proof.
 
 ## Later
 
@@ -31,6 +34,8 @@ State: **verification / final investigation implementation frozen for review**
 - [x] Tiny recurrent learner runs locally; browser linear preview is labeled separately.
 - [x] Focused README, docs navigation, MIT license and static hosting metadata.
 - [x] Separate final-investigation runner with train-only CPU/wall calibration, strict bins, pairwise componentwise upper-cost ceilings, per-model strict manifests, seed-safe pairing, full execution fingerprints, timing tolerances, replay checks and inconclusive outcomes.
+- [x] One registered capped final-investigation pilot at `1321821191e92a832a03426fb1a2b040ca7f1bc0`; result retained privately as inconclusive because both strict bins and upper ceilings were unavailable before held-out evaluation.
+- [x] Train-only `raw-batch-cv-k5-v1` amendment: five outer raw-total batches after warmup, fixed `R` calls per batch, raw-total CV, retained segments/outliers, RSS provenance, and pre-held-out freeze controls; new pilot still pending review.
 
 ## Full-v1 acceptance matrix
 

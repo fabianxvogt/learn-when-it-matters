@@ -30,3 +30,16 @@ envelope, strict availability and coverage checks for both model families,
 seed-keyed paired differences, full execution fingerprints, and the exact
 integer 20% invalid-timing rule. These are source-level checks only until an
 independent reviewer accepts the exact commit.
+
+## Train-only measurement amendment
+
+The completed pilot remains preserved as inconclusive; its timer-floor
+hypothesis was not reproduced and is not called a bug. The new amendment is a
+separate protocol version: after the existing training-selected repeat count
+`R` and warmup, each candidate gets `K=5` outer CPU/wall batches. CV uses the
+five raw batch totals (equally scaled totals are equivalent), cost uses total
+divided by `R`, and every segment and outlier remains in the record. Training
+eligibility, strict bins, and componentwise ceilings freeze before held-out
+work. RSS is recorded honestly from the process resource usage API, and an
+external watchdog may not exceed 1,800 seconds. No new pilot or benchmark is
+authorized by this amendment.

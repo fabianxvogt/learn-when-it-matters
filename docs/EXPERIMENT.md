@@ -16,17 +16,20 @@ At matched accepted-update and measured-compute budgets, can a lagged usefulness
 ## Final measured-cost investigation
 
 `npm run experiment:final -- --out=work/final-investigation.json` is a separate
-CPU-only protocol for the remaining identification gap. It keeps all seven
-methods and both model families, tunes only on training seeds 42–44, calibrates
-one fixed repetition batch on training data, and evaluates paired held-out
+CPU-only protocol for the remaining identification gap. The current source
+amendment is `raw-batch-cv-k5-v1`, distinct from the consumed pilot report. It
+keeps all seven methods and both model families, tunes only on training seeds
+42–44, calibrates one training-selected fixed repetition count `R`, then
+measures five (`K=5`) outer training batches after warmup and evaluates paired held-out
 seeds 100–107 across two unseen recurrence/noise cells and never-repeating
 controls. It records process CPU deltas, monotonic wall time, the existing
 operation ledger, full traces, host metadata, timing CV, measured-cost bins,
 bootstrap intervals and paired sign-permutation checks.
 
-The chosen repetition count wraps the complete calibration/evaluation batch in
-one measured interval and divides the batch CPU and wall totals by that same
-fixed count. A manifest audit rejects missing, duplicate or wrong-cell rows
+Each measured training batch wraps the complete `R`-call batch in one CPU/wall
+interval. Candidate cost is the raw batch total divided by `R`; comparability
+CV is computed over the five raw batch totals, not internal segments. All five
+batches, all `R` segments, and outliers are retained. A manifest audit rejects missing, duplicate or wrong-cell rows
 across both models, all seven methods, all suites, all cells, all paired seeds
 and every locked ceiling. A deterministic replay audit is emitted in the run
 report before any conclusion can be considered.
@@ -36,7 +39,9 @@ when timing is outside tolerance; a whole bin/cell becomes inconclusive when
 20% or more of its required rows are outside tolerance. The transition diagnostic is explicitly
 `not estimable` until a hidden-switch fixture is added. The pilot has a
 600-second process-CPU cap and 1,800-second wall watchdog; incomplete runs
-cannot publish a conclusion.
+cannot publish a conclusion. RSS is captured from
+`process.resourceUsage().maxRSS` with its platform-native unit. Any external
+watchdog must be no longer than 1,800 seconds.
 
 If the strict intersection is empty, the runner also constructs predeclared
 train-locked upper CPU+wall cost ceilings from pairwise componentwise maxima.
@@ -44,6 +49,10 @@ Candidates at or below a ceiling
 remain eligible, including cheaper controls; no work is added to manufacture a
 lower-band match. Ceiling results are reported as descriptive dominance/error
 evidence and are never relabeled as strict matched-bin results.
+
+The corrected training eligibility table, strict bins, and upper ceilings are
+frozen before any held-out work. The amendment has no new pilot result yet; the
+original pilot JSON remains the preserved inconclusive record.
 
 ## Invalid paths
 

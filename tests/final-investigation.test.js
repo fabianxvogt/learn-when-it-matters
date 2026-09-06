@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_CONFIG, generateStream } from "../src/core.js";
 import { METHOD_DEFS } from "../src/core.js";
-import { analyzeCostCeilings, assessCompletion, auditCoverage, buildEvaluationManifest, configFingerprint, constructCommonBins, constructCostCeilings, executionFingerprint, finalizeReportState, measureBatchInvocation, pairSeedDifferences, replayTrace, runReplayAudit, selectCeilingCandidates, selectLockedCandidates, signPermutation, timingCoverageEligible, timingIsComparable } from "../scripts/run-final-investigation.mjs";
+import { FINAL_PROTOCOL, MEASUREMENT_PROTOCOL_VERSION, PROVENANCE_VERSION, analyzeCostCeilings, assessCompletion, auditCoverage, buildEvaluationManifest, configFingerprint, constructCommonBins, constructCostCeilings, executionFingerprint, finalizeReportState, measureBatchInvocation, measureCalibrationBatches, pairSeedDifferences, replayTrace, runReplayAudit, selectCeilingCandidates, selectLockedCandidates, signPermutation, summarizeMeasuredBatches, timingCoverageEligible, timingIsComparable } from "../scripts/run-final-investigation.mjs";
 
 function syntheticCell(model, methodId, trainMse = 0.1, cpuMs = 10, wallMs = 10) {
   return {
@@ -96,6 +96,58 @@ test("calibration/evaluation batching measures one fixed interval and divides it
   assert.equal(batch.segments.length, 3);
   assert.equal(batch.cpuMs, batch.batchCpuMs / 3);
   assert.equal(batch.wallMs, batch.batchWallMs / 3);
+  assert.ok(Object.hasOwn(batch, "maxRSS"));
+});
+
+test("the amendment declares five raw-batch samples and a distinct provenance version", () => {
+  assert.equal(FINAL_PROTOCOL.calibrationBatches, 5);
+  assert.equal(FINAL_PROTOCOL.measurementProtocolVersion, MEASUREMENT_PROTOCOL_VERSION);
+  assert.equal(PROVENANCE_VERSION, "final-investigation-raw-batch-cv-k5-v1");
+});
+
+test("stable batch totals stay eligible while an internal segment outlier is retained", () => {
+  const batches = [0.744, 0.750, 0.746, 0.748, 0.745].map((batchCpuMs, batchIndex) => ({
+    batchCpuMs,
+    batchWallMs: 1.2 + batchIndex * 0.002,
+    segments: [{ cpuMs: 0.04, wallMs: 0.4 }, { cpuMs: batchIndex === 1 ? 0.65 : 0.04, wallMs: 0.4 }, { cpuMs: 0.04, wallMs: 0.4 }]
+  }));
+  const summary = summarizeMeasuredBatches(batches, 3);
+  assert.equal(summary.batchCount, 5);
+  assert.equal(summary.comparable, true);
+  assert.equal(summary.segments.length, 15);
+  assert.ok(summary.segments.some((segment) => segment.cpuMs === 0.65 && segment.batchIndex === 1));
+});
+
+test("unstable raw batch totals remain ineligible", () => {
+  const batches = [0.6, 0.6, 1.8, 0.6, 0.6].map((batchCpuMs) => ({ batchCpuMs, batchWallMs: 1, segments: [] }));
+  const summary = summarizeMeasuredBatches(batches, 3);
+  assert.ok(summary.cpu.cv > 0.2);
+  assert.equal(summary.comparable, false);
+});
+
+test("CV does not change when raw batch totals are equally scaled", () => {
+  const base = [1, 2, 3, 4, 5].map((batchCpuMs) => ({ batchCpuMs, batchWallMs: batchCpuMs, segments: [] }));
+  const scaled = base.map((batch) => ({ ...batch, batchCpuMs: batch.batchCpuMs * 7, batchWallMs: batch.batchWallMs * 7 }));
+  const baseSummary = summarizeMeasuredBatches(base, 3);
+  const scaledSummary = summarizeMeasuredBatches(scaled, 3);
+  assert.ok(Math.abs(scaledSummary.cpu.cv - baseSummary.cpu.cv) < 1e-12);
+  assert.ok(Math.abs(scaledSummary.wall.cv - baseSummary.wall.cv) < 1e-12);
+  assert.ok(Math.abs(scaledSummary.dividedCpuMs - baseSummary.dividedCpuMs * 7) < 1e-12);
+});
+
+test("five measured batches each contain the locked repeat count", async () => {
+  let calls = 0;
+  const measured = await measureCalibrationBatches(async () => {
+    calls += 1;
+    return { mse: calls, cost: calls };
+  }, 3, 5);
+  assert.equal(calls, 15);
+  assert.equal(measured.batchCount, 5);
+  assert.equal(measured.batches.length, 5);
+  assert.ok(measured.batches.every((batch) => batch.results.length === 3 && batch.segments.length === 3));
+  assert.equal(measured.rawBatchCpuMs.length, 5);
+  assert.equal(measured.rawBatchWallMs.length, 5);
+  assert.equal(measured.segments.length, 15);
 });
 
 test("coverage audit rejects missing and duplicate required rows", () => {

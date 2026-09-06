@@ -7,13 +7,18 @@ import process from "node:process";
 import { DEFAULT_CONFIG, METHOD_DEFS, generateStream, getStreamSpec, mulberry32, runMethod } from "../src/core.js";
 import { runRecurrentMethod } from "../src/recurrent.js";
 
+export const MEASUREMENT_PROTOCOL_VERSION = "raw-batch-cv-k5-v1";
+export const PROVENANCE_VERSION = "final-investigation-raw-batch-cv-k5-v1";
+
 export const FINAL_PROTOCOL = {
+  measurementProtocolVersion: MEASUREMENT_PROTOCOL_VERSION,
   trainSeeds: [42, 43, 44],
   evaluationSeeds: [100, 101, 102, 103, 104, 105, 106, 107],
   horizon: 240,
   budgets: [30, 60, 120],
   calibrationWarmups: 1,
   calibrationRepeats: 5,
+  calibrationBatches: 5,
   tolerance: 0.15,
   maxTimingCv: 0.2,
   minimumInToleranceRate: 0.8,
@@ -112,14 +117,49 @@ export async function measureBatchInvocation(invoke, count) {
   }
   const batchCpuMs = cpuMilliseconds(process.resourceUsage()) - cpuMilliseconds(beforeCpu);
   const batchWallMs = Number(process.hrtime.bigint() - started) / 1e6;
+  const endUsage = process.resourceUsage();
   return {
     results,
     segments,
     batchCpuMs,
     batchWallMs,
     cpuMs: batchCpuMs / count,
-    wallMs: batchWallMs / count
+    wallMs: batchWallMs / count,
+    maxRSS: Number.isFinite(endUsage.maxRSS) ? endUsage.maxRSS : null
   };
+}
+
+export function summarizeMeasuredBatches(batches, repeatCount) {
+  const rawBatchCpuMs = batches.map((batch) => batch.batchCpuMs);
+  const rawBatchWallMs = batches.map((batch) => batch.batchWallMs);
+  const cpu = timingSummary(rawBatchCpuMs);
+  const wall = timingSummary(rawBatchWallMs);
+  const segments = batches.flatMap((batch, batchIndex) => batch.segments.map((segment, repeatIndex) => ({ ...segment, batchIndex, repeatIndex })));
+  const meanBatchCpuMs = mean(rawBatchCpuMs);
+  const meanBatchWallMs = mean(rawBatchWallMs);
+  return {
+    batchCount: batches.length,
+    repeatCount,
+    rawBatchCpuMs,
+    rawBatchWallMs,
+    meanBatchCpuMs,
+    meanBatchWallMs,
+    dividedCpuMs: meanBatchCpuMs / repeatCount,
+    dividedWallMs: meanBatchWallMs / repeatCount,
+    cpu: { ...cpu, batchDivided: meanBatchCpuMs / repeatCount },
+    wall: { ...wall, batchDivided: meanBatchWallMs / repeatCount },
+    segments,
+    comparable: timingIsComparable({ cpu, wall })
+  };
+}
+
+export async function measureCalibrationBatches(invoke, repeatCount, batchCount = FINAL_PROTOCOL.calibrationBatches) {
+  const batches = [];
+  for (let batchIndex = 0; batchIndex < batchCount; batchIndex += 1) {
+    if (resourceGuard()) throw new Error("PILOT_RESOURCE_CAP_EXCEEDED_DURING_CALIBRATION_BATCHES");
+    batches.push(await measureBatchInvocation(invoke, repeatCount));
+  }
+  return { ...summarizeMeasuredBatches(batches, repeatCount), batches };
 }
 
 export function timingIsComparable(timing, maxCv = FINAL_PROTOCOL.maxTimingCv) {
@@ -173,21 +213,24 @@ async function calibrateCandidate(modelId, methodId, candidate, budget) {
   const config = trainingConfig(candidate, budget, protocol.trainSeeds[0]);
   const stream = streamFor(config, config.seed, undefined);
   for (let index = 0; index < protocol.calibrationWarmups; index += 1) await runModel(modelId, methodId, stream, config);
-  const measured = await measureBatchInvocation(() => runModel(modelId, methodId, stream, config), activeCalibrationRepeats);
-  const cpuSamples = measured.segments.map((segment) => segment.cpuMs);
-  const wallSamples = measured.segments.map((segment) => segment.wallMs);
+  const measured = await measureCalibrationBatches(() => runModel(modelId, methodId, stream, config), activeCalibrationRepeats, protocol.calibrationBatches);
   return {
     seed: config.seed,
     warmupCount: protocol.calibrationWarmups,
     repeatCount: activeCalibrationRepeats,
-    batchCpuMs: measured.batchCpuMs,
-    batchWallMs: measured.batchWallMs,
-    dividedCpuMs: measured.cpuMs,
-    dividedWallMs: measured.wallMs,
-    perRepeat: measured.results.map((result, index) => ({ cpuMs: cpuSamples[index], wallMs: wallSamples[index], mse: result.mse, syntheticCost: result.cost })),
-    cpu: { ...timingSummary(cpuSamples), batchDivided: measured.cpuMs },
-    wall: { ...timingSummary(wallSamples), batchDivided: measured.wallMs },
-    comparable: timingIsComparable({ cpu: timingSummary(cpuSamples), wall: timingSummary(wallSamples) })
+    batchCount: measured.batchCount,
+    rawBatchCpuMs: measured.rawBatchCpuMs,
+    rawBatchWallMs: measured.rawBatchWallMs,
+    batchCpuMs: measured.meanBatchCpuMs,
+    batchWallMs: measured.meanBatchWallMs,
+    dividedCpuMs: measured.dividedCpuMs,
+    dividedWallMs: measured.dividedWallMs,
+    perBatch: measured.batches.map((batch, batchIndex) => ({ batchIndex, batchCpuMs: batch.batchCpuMs, batchWallMs: batch.batchWallMs, maxRSS: batch.maxRSS, perRepeat: batch.results.map((result, repeatIndex) => ({ repeatIndex, cpuMs: batch.segments[repeatIndex].cpuMs, wallMs: batch.segments[repeatIndex].wallMs, mse: result.mse, syntheticCost: result.cost })) })),
+    perRepeat: measured.batches.flatMap((batch, batchIndex) => batch.results.map((result, repeatIndex) => ({ batchIndex, repeatIndex, cpuMs: batch.segments[repeatIndex].cpuMs, wallMs: batch.segments[repeatIndex].wallMs, mse: result.mse, syntheticCost: result.cost }))),
+    segments: measured.segments,
+    cpu: measured.cpu,
+    wall: measured.wall,
+    comparable: measured.comparable
   };
 }
 
@@ -377,6 +420,7 @@ function parseJsonHash(path) {
 
 function hostMetadata() {
   const cpu = os.cpus();
+  const usage = process.resourceUsage();
   const lockfile = ["package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml"].find((name) => existsSync(name));
   return {
     node: process.version,
@@ -389,6 +433,9 @@ function hostMetadata() {
     timestamp: new Date().toISOString(),
     warmupCount: protocol.calibrationWarmups,
     calibrationRepeats: protocol.calibrationRepeats,
+    calibrationBatches: protocol.calibrationBatches,
+    measurementProtocolVersion: protocol.measurementProtocolVersion,
+    rss: { value: Number.isFinite(usage.maxRSS) ? usage.maxRSS : null, unit: "platform-native process.resourceUsage.maxRSS", source: "process.resourceUsage" },
     explicitGc: typeof global.gc === "function"
   };
 }
@@ -601,10 +648,11 @@ export function finalizeReportState({ completion, analysisDecision, runClassific
 
 function makeReport(partial) {
   return {
-    version: 2,
+    version: 3,
     status: partial.status ?? "running",
     complete: partial.complete ?? false,
     protocol: { ...protocol, calibrationRepeats: activeCalibrationRepeats },
+    provenanceVersion: PROVENANCE_VERSION,
     host: partial.host,
     fallbackLadder: [
       { timingRepeats: 3, evaluationSeeds: 8, maxBins: 3 },
@@ -629,6 +677,7 @@ function makeReport(partial) {
     source: { sha: partial.sourceSha ?? null },
     runClassification: partial.runClassification ?? "registered-protocol",
     completion: partial.completion ?? null,
+    trainingFreeze: partial.trainingFreeze ?? null,
     progress: partial.progress ?? { stage: "not-started" }
   };
 }
@@ -680,6 +729,12 @@ async function main() {
       report.costCeilings[model.id] = constructCostCeilings(report.calibration, model.id, protocol);
       report.ceilingSelections[model.id] = selectCeilingCandidates(report.calibration, model.id, report.costCeilings[model.id].ceilings, protocol);
     }
+    report.trainingFreeze = {
+      status: "frozen-before-heldout",
+      provenanceVersion: PROVENANCE_VERSION,
+      calibrationRows: report.calibration.length,
+      models: Object.fromEntries(MODEL_DEFS.map((model) => [model.id, { commonBinStatus: report.commonBins[model.id].status, ceilingStatus: report.costCeilings[model.id].status }]))
+    };
     report.expectedManifests.strict = buildEvaluationManifest(report.lockedSelections, "strict-bin");
     report.expectedManifests.ceiling = buildEvaluationManifest(report.ceilingSelections, "cost-ceiling");
     report.expectedManifests.strictByModel = Object.fromEntries(MODEL_DEFS.map((model) => [model.id, buildEvaluationManifestForModels(report.lockedSelections, "strict-bin", [model])]));
@@ -753,8 +808,10 @@ async function main() {
   } finally {
     const totalCpuMs = cpuUsedSince(startCpu);
     const totalWallMs = Number(process.hrtime.bigint() - startWall) / 1e6;
+    const endUsage = process.resourceUsage();
     report.host.cpuUsedMs = totalCpuMs;
     report.host.wallUsedMs = totalWallMs;
+    report.host.rss.end = { value: Number.isFinite(endUsage.maxRSS) ? endUsage.maxRSS : null, unit: "platform-native process.resourceUsage.maxRSS", source: "process.resourceUsage" };
     report.host.endSnapshot = snapshot("end");
     report.termination = { reason: terminationReason, phase, totalCpuMs, totalWallMs, cpuCapSeconds: protocol.cpuCapSeconds, wallWatchdogSeconds: protocol.wallWatchdogSeconds, watchdogExceeded: totalCpuMs >= protocol.cpuCapSeconds * 1000 || totalWallMs >= protocol.wallWatchdogSeconds * 1000, lastCompletedCheckpoint: report.checkpoints.at(-1) ?? null };
     persist();
