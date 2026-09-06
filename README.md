@@ -2,7 +2,7 @@
 
 Catalog project 1: a local-first selective online-learning laboratory. The browser app runs a seeded, browser-sized online regression comparison. The local runner adds a tiny recurrent learner, trains bounded policy parameters only on recurring training streams, then freezes them across held-out recurrence/noise settings and a never-repeating control.
 
-Status: **product/reproducibility delivery; scientific attempt closed bounded INCONCLUSIVE** · classification: **EXPLORATORY** · license: MIT
+Status: **public browser preview live from reviewed source `5ee67f10`; scientific attempt closed bounded INCONCLUSIVE** · classification: **EXPLORATORY** · license: MIT
 
 ## Try it locally
 
@@ -10,7 +10,7 @@ Status: **product/reproducibility delivery; scientific attempt closed bounded IN
 npm run dev
 ```
 
-Open `http://127.0.0.1:4173`. The first screen is the working surface: configure a seeded recurrence/noise stream, update budget and probe accounting; run paired methods; inspect predictions, actions, charged probes and the ledger; pause or cancel at the browser limit; save, reload, export, import or reset. Run and import state is generation-guarded, so late work cannot replace a newer result or reset. The browser is a linear online-regressor preview. The tiny recurrent learner is local-CLI-only.
+Open `http://127.0.0.1:4173` or the [public browser preview](https://learn-when-it-matters.fabian523417.chatgpt.site). The first screen is the working surface: configure a seeded recurrence/noise stream, update budget and probe accounting; run paired methods; inspect predictions, actions, charged probes and the ledger; pause or cancel at the browser limit; save, reload, export, import or reset. Run and import state is generation-guarded, so late work cannot replace a newer result or reset. The browser is a linear online-regressor preview. The tiny recurrent learner is local-CLI-only.
 
 For the bounded local comparison:
 
@@ -33,7 +33,8 @@ predeclared train-locked upper-cost ceilings without padding cheaper controls.
 Its 600-second CPU and 1,800-second wall limits are intentional. The private
 pilot artifacts are not browser results and do not establish a model win,
 equivalence, inferiority, or universal claim. No full-v1 scientific claim is
-made; product review and any public push remain separate gates.
+made; the public preview is ordinary product delivery only, not a scientific
+release. Product QA remains bounded and no full-v1 scientific claim follows.
 
 ## Research contract
 
