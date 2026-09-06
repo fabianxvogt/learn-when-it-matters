@@ -57,6 +57,42 @@ function renderLegend() {
   $("legend").innerHTML = METHOD_DEFS.map((item) => `<span class="legend-item"><i class="legend-swatch" style="background:${colors[item.tone]}"></i>${item.label}</span>`).join("");
 }
 
+function releasePauseWaiters() {
+  if (!activeRun?.pauseWaiters) return;
+  const waiters = activeRun.pauseWaiters.splice(0);
+  waiters.forEach((resolve) => resolve());
+}
+
+function waitIfPaused() {
+  if (!activeRun?.paused) return Promise.resolve();
+  return new Promise((resolve) => activeRun.pauseWaiters.push(resolve));
+}
+
+function renderAccessibleChartTable(run) {
+  $("chartDataBody").innerHTML = run.results.map((result) => {
+    const points = rolling(result.losses);
+    const item = method(result.methodId);
+    return `<tr><td>${item.label}</td><td>${formatNumber(result.mse, 4)}</td><td>${formatNumber(points[0], 4)}</td><td>${formatNumber(points.at(-1), 4)}</td></tr>`;
+  }).join("");
+}
+
+function renderTrace(run) {
+  const select = $("traceMethod");
+  if (!select.options.length) {
+    select.innerHTML = METHOD_DEFS.map((item) => `<option value="${item.id}">${item.label}</option>`).join("");
+  }
+  const selected = run.results.find((result) => result.methodId === select.value) ?? run.results[0];
+  select.value = selected.methodId;
+  const probeByStep = new Map();
+  for (const probe of selected.probeTrace ?? []) {
+    probeByStep.set(probe.createdAt, `probe → t${probe.resolvedAt}`);
+    probeByStep.set(probe.resolvedAt, `${probe.useful ? "useful" : "discarded"} probe`);
+  }
+  $("traceBody").innerHTML = run.stream.map((sample, index) => `<tr><td>${index}</td><td>${formatNumber(sample.x, 4)}</td><td>${formatNumber(selected.predictions[index], 4)}</td><td>${formatNumber(sample.y, 4)}</td><td>${selected.actionTrace[index] ?? "—"}</td><td>${formatNumber(selected.losses[index], 4)}</td><td>${probeByStep.get(index) ?? "—"}</td></tr>`).join("");
+  const ledger = selected.costLedger;
+  $("traceSummary").textContent = `${method(selected.methodId).label}: total cost ${formatNumber(selected.cost, 0)}; ${ledger.forwardPasses} forward passes, ${ledger.probeForwards} charged probe forwards, ${ledger.candidateGradientOperations} candidate-gradient operations, ${ledger.stateCopies} state copies, ${ledger.discardedWork} discarded candidates, ${formatNumber(ledger.elapsedWallMs, 1)} ms wall time.`;
+}
+
 function rolling(values, radius = 12) {
   return values.map((_, index) => {
     const start = Math.max(0, index - radius + 1);
@@ -113,38 +149,40 @@ function drawChart(run) {
 
 function renderResults(run) {
   lastRun = run;
-  const bestMse = run.results.find((result) => result.methodId === run.bestByMse);
-  const bestEfficiency = run.results.find((result) => result.methodId === run.bestByEfficiency);
+  const bestMse = run.results.find((result) => result.methodId === run.bestByMse) ?? [...run.results].sort((a, b) => a.mse - b.mse)[0];
+  const bestEfficiency = run.results.find((result) => result.methodId === run.bestByEfficiency) ?? [...run.results].sort((a, b) => a.errorPerCost - b.errorPerCost)[0];
   $("bestMse").textContent = formatNumber(bestMse.mse, 4);
-  $("bestMseMethod").textContent = method(bestMse.methodId).label;
+  $("bestMseMethod").textContent = `${method(bestMse.methodId).label} · descriptive only`;
   $("bestEfficiency").textContent = formatNumber(bestEfficiency.errorPerCost, 5);
-  $("bestEfficiencyMethod").textContent = `${method(bestEfficiency.methodId).label} · probes included`;
+  $("bestEfficiencyMethod").textContent = `${method(bestEfficiency.methodId).label} · descriptive only`;
   $("decisionCount").textContent = formatNumber(run.results.reduce((sum, result) => sum + result.updateCount + result.probeCount, 0), 0);
   $("resultsBody").innerHTML = run.results.map((result) => {
     const item = method(result.methodId);
-    const signal = result.methodId === run.bestByMse ? "best raw" : result.methodId === run.bestByEfficiency ? "best / cost" : "—";
-    return `<tr><td><span class="method-dot" style="background:${colors[item.tone]}"></span>${item.label}</td><td>${formatNumber(result.mse, 4)}</td><td>${result.updateCount}</td><td>${result.probeCount}</td><td>${result.discardedCandidates ?? result.discardedUpdates}</td><td>${formatNumber(result.cost, 0)}</td><td class="${signal !== "—" ? "signal-text" : ""}">${signal}</td></tr>`;
+    return `<tr><td><span class="method-dot" style="background:${colors[item.tone]}"></span>${item.label}</td><td>${formatNumber(result.mse, 4)}</td><td>${result.updateCount}</td><td>${result.probeCount}</td><td>${result.discardedCandidates ?? result.discardedUpdates}</td><td>${formatNumber(result.cost, 0)}</td></tr>`;
   }).join("");
   $("chartEmpty").hidden = false;
   $("chartEmpty").style.display = "none";
   drawChart(run);
+  renderAccessibleChartTable(run);
+  renderTrace(run);
   const causal = run.results.find((result) => result.methodId === "causal-gate");
   const classical = run.results.find((result) => result.methodId === "classical");
-  const winner = bestEfficiency.methodId === "causal-gate" ? "The causal gate currently leads the cost-normalized readout, but this is one seeded browser stream." : `The cost-normalized lead is ${method(bestEfficiency.methodId).label}; the usefulness gate should not be expanded without held-out local evidence.`;
-  $("readoutText").textContent = `${winner} It used ${causal.probeCount} probes, ${causal.discardedCandidates ?? causal.discardedUpdates} discarded candidates, and ${formatNumber(causal.costLedger.elapsedWallMs, 1)} ms wall time; RLS is included as a classical tracking control (${formatNumber(classical.mse, 4)} MSE).`;
+  $("readoutText").textContent = `One seeded browser stream only: the readouts are descriptive, not a scientific winner, equivalence, or negative result. The causal gate charged ${causal.probeCount} probes, ${causal.discardedCandidates ?? causal.discardedUpdates} discarded candidates, and ${formatNumber(causal.costLedger.elapsedWallMs, 1)} ms wall time; RLS is included as a classical tracking control (${formatNumber(classical.mse, 4)} MSE).`;
 }
 
 async function run() {
   if (activeRun) return;
   const config = readConfig();
-  activeRun = { cancelled: false };
+  activeRun = { cancelled: false, paused: false, pauseWaiters: [] };
   $("runButton").disabled = true;
+  $("pauseButton").disabled = false;
+  $("pauseButton").textContent = "Pause run";
   $("cancelButton").disabled = false;
   $("progressWrap").hidden = false;
   setProgress(0, "Preparing stream");
   $("runStatus").textContent = "Predictions are frozen before each label; methods are paired on one stream.";
   try {
-    const runResult = await runComparison(config, (fraction) => setProgress(fraction, "Running paired methods"), () => activeRun?.cancelled);
+    const runResult = await runComparison(config, (fraction) => setProgress(fraction, activeRun?.paused ? "Paused" : "Running paired methods"), () => activeRun?.cancelled, waitIfPaused);
     if (activeRun?.cancelled) return;
     renderResults(runResult);
     setProgress(1, "Comparison complete");
@@ -158,8 +196,11 @@ async function run() {
       $("runStatus").textContent = "Run cancelled. You can change the budget and retry.";
     }
   } finally {
+    releasePauseWaiters();
     activeRun = null;
     $("runButton").disabled = false;
+    $("pauseButton").disabled = true;
+    $("pauseButton").textContent = "Pause run";
     $("cancelButton").disabled = true;
   }
 }
@@ -168,15 +209,39 @@ function exportRun() {
   if (!lastRun) { showToast("Run a comparison before exporting."); return; }
   const blob = new Blob([JSON.stringify({ ...lastRun, exportVersion: "lwm.v1" }, null, 2)], { type: "application/json" });
   const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob); link.download = `learn-when-it-matters-seed-${lastRun.config.seed}.json`; link.click();
+  link.href = URL.createObjectURL(blob); link.download = `learn-when-it-matters-seed-${lastRun.config.seed}.json`;
+  document.body.append(link); link.click(); link.remove();
   setTimeout(() => URL.revokeObjectURL(link.href), 1000);
   showToast("Versioned run exported.");
 }
 
 function saveLocally() {
   if (!lastRun) { showToast("Run a comparison before saving."); return; }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(lastRun));
-  showToast("Run saved in this browser.");
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(lastRun));
+    showToast("Run saved in this browser.");
+  } catch (error) {
+    showToast(`Save unavailable: ${error.message}`);
+  }
+}
+
+function validImportedRun(parsed) {
+  const methodIds = new Set(METHOD_DEFS.map((item) => item.id));
+  return parsed?.version === 1
+    && parsed.config
+    && Array.isArray(parsed.stream)
+    && Array.isArray(parsed.results)
+    && parsed.results.length === METHOD_DEFS.length
+    && parsed.results.every((result) => methodIds.has(result.methodId)
+      && Number.isFinite(result.mse)
+      && Array.isArray(result.predictions)
+      && Array.isArray(result.losses)
+      && Array.isArray(result.actionTrace)
+      && result.predictions.length === result.losses.length
+      && result.losses.length === result.actionTrace.length
+      && parsed.stream.length === result.predictions.length
+      && result.costLedger
+      && Number.isFinite(result.cost));
 }
 
 async function importRun(event) {
@@ -184,8 +249,7 @@ async function importRun(event) {
   if (!file) return;
   try {
     const parsed = JSON.parse(await file.text());
-    if (parsed.version !== 1 || !parsed.config || !Array.isArray(parsed.results)) throw new Error("This is not a Learn When It Matters v1 run.");
-    if (!parsed.results.every((result) => result.methodId && Number.isFinite(result.mse) && Array.isArray(result.predictions))) throw new Error("Run results are incomplete.");
+    if (!validImportedRun(parsed)) throw new Error("This is not a complete Learn When It Matters v1 run.");
     setConfig(parsed.config);
     renderResults(parsed);
     showToast("Run imported and reopened.");
@@ -195,23 +259,37 @@ async function importRun(event) {
 }
 
 function reset() {
-  if (activeRun) { activeRun.cancelled = true; }
+  if (activeRun) { activeRun.cancelled = true; activeRun.paused = false; releasePauseWaiters(); }
   setConfig(DEFAULT_CONFIG);
   lastRun = null;
   $("bestMse").textContent = "—"; $("bestMseMethod").textContent = "run to measure"; $("bestEfficiency").textContent = "—"; $("bestEfficiencyMethod").textContent = "probes included"; $("decisionCount").textContent = "—";
-  $("resultsBody").innerHTML = '<tr><td colspan="7" class="empty-cell">No run yet. The seeded example is ready.</td></tr>';
+  $("resultsBody").innerHTML = '<tr><td colspan="6" class="empty-cell">No run yet. The seeded example is ready.</td></tr>';
+  $("chartDataBody").innerHTML = '<tr><td colspan="4" class="empty-cell">Run the comparison to populate this table.</td></tr>';
+  $("traceBody").innerHTML = '<tr><td colspan="7" class="empty-cell">Run the comparison to populate this trace.</td></tr>';
+  $("traceSummary").textContent = "Run a comparison to inspect its step trace.";
   $("chartEmpty").style.display = "grid";
   $("runStatus").textContent = "Ready. The example stream is deterministic.";
-  $("readoutText").textContent = "A frontier with no improvement is still a useful negative result. Run the comparison to see whether the gate earns its probe overhead on this stream.";
+  $("readoutText").textContent = "This browser view is one seeded empirical instrument. Its readouts are descriptive only; they do not establish a scientific winner, equivalence, or negative result.";
   showToast("Example configuration restored.");
 }
 
 for (const id of ["horizon", "recurrence", "noise"]) $(id).addEventListener("input", updateValueLabels);
 $("runButton").addEventListener("click", run);
-$("cancelButton").addEventListener("click", () => { if (activeRun) activeRun.cancelled = true; });
+$("pauseButton").addEventListener("click", () => {
+  if (!activeRun) return;
+  activeRun.paused = !activeRun.paused;
+  $("pauseButton").textContent = activeRun.paused ? "Resume run" : "Pause run";
+  $("runStatus").textContent = activeRun.paused ? "Run paused. Resume or cancel when ready." : "Predictions are frozen before each label; methods are paired on one stream.";
+  if (!activeRun.paused) releasePauseWaiters();
+});
+$("cancelButton").addEventListener("click", () => { if (activeRun) { activeRun.cancelled = true; activeRun.paused = false; releasePauseWaiters(); } });
 $("exportButton").addEventListener("click", exportRun);
 $("saveButton").addEventListener("click", saveLocally);
 $("importInput").addEventListener("change", importRun);
+$("importLabel").addEventListener("keydown", (event) => {
+  if (event.key === "Enter" || event.key === " ") { event.preventDefault(); $("importInput").click(); }
+});
+$("traceMethod").addEventListener("change", () => { if (lastRun) renderTrace(lastRun); });
 $("resetButton").addEventListener("click", reset);
 $("themeToggle").addEventListener("click", () => document.body.classList.toggle("light"));
 window.addEventListener("resize", () => { if (lastRun) drawChart(lastRun); });
@@ -222,7 +300,7 @@ try {
   const saved = localStorage.getItem(STORAGE_KEY);
   if (saved) {
     const restored = JSON.parse(saved);
-    if (restored.version === 1 && restored.config && Array.isArray(restored.results)) {
+    if (validImportedRun(restored)) {
       setConfig(restored.config);
       renderResults(restored);
       $("runStatus").textContent = "Saved run restored locally. Run fresh or import another versioned file.";

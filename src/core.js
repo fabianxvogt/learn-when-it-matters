@@ -173,7 +173,7 @@ function wantsUpdate(methodId, context) {
   return false;
 }
 
-export async function runMethod(methodId, stream, inputConfig = {}, progress = () => {}, cancel = () => false) {
+export async function runMethod(methodId, stream, inputConfig = {}, progress = () => {}, cancel = () => false, waitIfPaused = async () => {}) {
   const config = normalizeConfig(inputConfig);
   const model = methodId === "classical" ? new RlsTracker() : new LinearRegressor();
   const random = mulberry32(config.seed + methodId.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0));
@@ -258,6 +258,8 @@ export async function runMethod(methodId, stream, inputConfig = {}, progress = (
     if (step % 60 === 0) {
       progress(step / stream.length);
       await new Promise((resolve) => setTimeout(resolve, 0));
+      await waitIfPaused();
+      if (cancel()) throw new Error("Experiment cancelled");
     }
   }
 
@@ -304,7 +306,7 @@ export async function runMethod(methodId, stream, inputConfig = {}, progress = (
   };
 }
 
-export async function runComparison(inputConfig = {}, progress = () => {}, cancel = () => false) {
+export async function runComparison(inputConfig = {}, progress = () => {}, cancel = () => false, waitIfPaused = async () => {}) {
   const config = normalizeConfig(inputConfig);
   const stream = generateStream(config);
   const results = [];
@@ -315,7 +317,8 @@ export async function runComparison(inputConfig = {}, progress = () => {}, cance
       stream,
       config,
       (fraction) => progress((index + fraction) / METHOD_DEFS.length),
-      cancel
+      cancel,
+      waitIfPaused
     );
     results.push(result);
   }

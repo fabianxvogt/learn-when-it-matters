@@ -33,6 +33,16 @@ test("comparison is reproducible and includes probe/discard accounting", async (
   assert.ok(causal.costLedger.candidateGradients >= causal.probeCount);
 });
 
+test("comparison exposes a cooperative pause hook at the browser yield limit", async () => {
+  let pauseChecks = 0;
+  const config = { ...DEFAULT_CONFIG, horizon: 60, updateBudget: 12, seed: 20 };
+  const result = await runComparison(config, () => {}, () => false, async () => {
+    pauseChecks += 1;
+  });
+  assert.equal(result.results.length, 7);
+  assert.ok(pauseChecks >= 7);
+});
+
 test("pre-label actions cannot change when only the current label changes", async () => {
   const config = { ...DEFAULT_CONFIG, horizon: 30, updateBudget: 20, seed: 31 };
   const first = generateStream(config);

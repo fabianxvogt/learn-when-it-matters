@@ -51,9 +51,13 @@ remain eligible, including cheaper controls; no work is added to manufacture a
 lower-band match. Ceiling results are reported as descriptive dominance/error
 evidence and are never relabeled as strict matched-bin results.
 
-The corrected training eligibility table, strict bins, and upper ceilings are
-frozen before any held-out work. The amendment has no new pilot result yet; the
-original pilot JSON remains the preserved inconclusive record.
+The corrected training eligibility table, strict bins, and upper ceilings were
+frozen before any held-out work. One K=5 amended attempt consumed the second
+registered authorization. It produced 102 calibration rows, zero strict
+held-out rows, and 672 partial ceiling rows, then closed as bounded
+**INCONCLUSIVE measurement identification**. The original pilot remains a
+separate preserved inconclusive record. Neither attempt supports a model win,
+equivalence, inferiority, negative hypothesis, or full-v1 claim.
 
 ## Invalid paths
 
@@ -61,4 +65,8 @@ Same-step residual gating, current-label lookahead, free probes, regime-ID acces
 
 ## Stop rule
 
-If usefulness gating does not beat the Pareto frontier of tuned periodic/change-point/classical controls on unseen streams at matched cost, or wins only after free-probe or label-leakage accounting, stop architecture growth and release the benchmark as an **INCREMENTAL** evaluation instrument / negative result after review.
+If usefulness gating does not beat the tuned controls on unseen streams at
+matched cost, or wins only after free-probe or label-leakage accounting, stop
+architecture growth. A run with no valid strict comparison remains
+**INCONCLUSIVE**, not a negative hypothesis; only a complete reviewed result
+may support a benchmark conclusion.

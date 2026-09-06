@@ -38,7 +38,7 @@
         <section class="workspace" aria-label="Experiment workspace">
           <aside class="control-panel panel">
             <div class="panel-heading">
-              <div><p class="eyebrow">01 / STREAM DESIGN</p><h2>Configure a run</h2></div>
+              <div><p class="eyebrow">01 / STREAM DESIGN</p><h2>Configure a run</h2><p class="model-scope"><strong>Browser preview:</strong> linear online regressor. Tiny recurrent learner runs in the local CLI only.</p></div>
               <span class="version-pill">browser-sized</span>
             </div>
 
@@ -77,6 +77,7 @@
 
             <div class="action-stack">
               <button class="primary-button" id="runButton" type="button"><span class="play-triangle">▶</span> Run comparison</button>
+              <button class="secondary-button" id="pauseButton" type="button" disabled>Pause run</button>
               <button class="secondary-button" id="cancelButton" type="button" disabled>Cancel run</button>
             </div>
             <div class="progress-wrap" id="progressWrap" hidden>
@@ -93,12 +94,12 @@
                 <div class="result-actions">
                   <button class="text-button" id="saveButton" type="button">Save locally</button>
                   <button class="text-button" id="exportButton" type="button">Export JSON</button>
-                  <label class="text-button file-button">Import JSON<input id="importInput" type="file" accept="application/json,.json" /></label>
+                  <label id="importLabel" class="text-button file-button" for="importInput" tabindex="0" role="button">Import JSON<input id="importInput" type="file" accept="application/json,.json" /></label>
                 </div>
               </div>
               <div class="metric-strip">
-                <div class="metric"><span>Best raw MSE</span><strong id="bestMse">—</strong><small id="bestMseMethod">run to measure</small></div>
-                <div class="metric accent-metric"><span>Best error / cost</span><strong id="bestEfficiency">—</strong><small id="bestEfficiencyMethod">probes included</small></div>
+                <div class="metric"><span>Lowest observed raw MSE</span><strong id="bestMse">—</strong><small id="bestMseMethod">descriptive stream readout</small></div>
+                <div class="metric accent-metric"><span>Observed error / cost</span><strong id="bestEfficiency">—</strong><small id="bestEfficiencyMethod">descriptive; probes included</small></div>
                 <div class="metric"><span>Total decisions</span><strong id="decisionCount">—</strong><small>updates + probes</small></div>
                 <div class="metric"><span>Evaluation rule</span><strong class="small-metric">before label</strong><small>no future regime IDs</small></div>
               </div>
@@ -106,7 +107,9 @@
 
             <div class="panel chart-panel">
               <div class="chart-header"><div><p class="eyebrow">ERROR TRACE</p><h3>Rolling squared error</h3></div><div class="legend" id="legend"></div></div>
-              <div class="chart-wrap"><canvas id="errorChart" aria-label="Rolling squared error chart"></canvas><div class="chart-empty" id="chartEmpty">Run the comparison to reveal the trace.</div></div>
+              <div class="chart-wrap"><canvas id="errorChart" role="img" aria-describedby="chartDescription" aria-label="Rolling squared error chart"></canvas><div class="chart-empty" id="chartEmpty">Run the comparison to reveal the trace.</div></div>
+              <p class="chart-description" id="chartDescription">The chart shows rolling squared error for each method. Use the accessible table below for keyboard and screen-reader comparison.</p>
+              <details class="accessible-data"><summary>Open accessible chart table</summary><div class="table-scroll"><table><caption>Descriptive browser-stream chart summary</caption><thead><tr><th>Method</th><th>Mean squared error</th><th>First rolling error</th><th>Last rolling error</th></tr></thead><tbody id="chartDataBody"><tr><td colspan="4" class="empty-cell">Run the comparison to populate this table.</td></tr></tbody></table></div></details>
               <div class="chart-footer"><span>early stream</span><span>held-out future labels never enter a decision</span><span>late stream</span></div>
             </div>
 
@@ -114,11 +117,20 @@
               <div class="table-heading"><div><p class="eyebrow">METHOD LEDGER</p><h3>Matched accounting</h3></div><span class="table-note">lower is better · update budget applies to every method</span></div>
               <div class="table-scroll">
                 <table>
-                  <thead><tr><th>Method</th><th>Mean squared error</th><th>Updates</th><th>Probes</th><th>Discarded</th><th>Total cost</th><th>Signal</th></tr></thead>
-                  <tbody id="resultsBody"><tr><td colspan="7" class="empty-cell">No run yet. The seeded example is ready.</td></tr></tbody>
+                  <caption class="visually-hidden">Per-method descriptive browser-stream accounting</caption>
+                  <thead><tr><th>Method</th><th>Mean squared error</th><th>Updates</th><th>Probes</th><th>Discarded</th><th>Total cost</th></tr></thead>
+                  <tbody id="resultsBody"><tr><td colspan="6" class="empty-cell">No run yet. The seeded example is ready.</td></tr></tbody>
                 </table>
               </div>
             </div>
+
+            <details class="panel trace-panel" id="traceDetails">
+              <summary>Inspect predictions, actions, probes and charged work</summary>
+              <div class="trace-content">
+                <div class="trace-controls"><label for="traceMethod">Method trace</label><select id="traceMethod"></select><p id="traceSummary" class="table-note">Run a comparison to inspect its step trace.</p></div>
+                <div class="table-scroll"><table><caption class="visually-hidden">Selected method step trace</caption><thead><tr><th>Step</th><th>Input x</th><th>Prediction</th><th>Label y</th><th>Action</th><th>Squared error</th><th>Probe</th></tr></thead><tbody id="traceBody"><tr><td colspan="7" class="empty-cell">Run the comparison to populate this trace.</td></tr></tbody></table></div>
+              </div>
+            </details>
           </section>
         </section>
 
@@ -136,7 +148,7 @@
           <article class="panel readout-card">
             <p class="eyebrow">04 / RESEARCH READOUT</p>
             <h2>Keep the result honest.</h2>
-            <div class="readout-callout"><span class="callout-mark">∿</span><p id="readoutText">A frontier with no improvement is still a useful negative result. Run the comparison to see whether the gate earns its probe overhead on this stream.</p></div>
+            <div class="readout-callout"><span class="callout-mark">∿</span><p id="readoutText">This browser view is one seeded empirical instrument. Its readouts are descriptive only; they do not establish a scientific winner, equivalence, or negative result.</p></div>
             <div class="readout-meta"><span>Evidence label <strong>EMPIRICAL</strong></span><span>Classification <strong>EXPLORATORY</strong></span></div>
             <button class="reset-link" id="resetButton" type="button">Reset to example configuration ↺</button>
           </article>
