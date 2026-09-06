@@ -74,3 +74,14 @@ test("overlapping imports and reset invalidate every stale read", () => {
   assert.equal(controller.commit(resetGeneration, () => { dom.status = "Ready"; dom.result = "none"; dom.runDisabled = false; }), true);
   assert.deepEqual(dom, { status: "Ready", result: "none", runDisabled: false });
 });
+
+test("current import rejection updates status while stale rejection cannot", () => {
+  const controller = createRunController();
+  const importA = controller.beginImport();
+  const importB = controller.beginImport();
+  const dom = { status: "Reading saved run…", result: "B" };
+
+  assert.equal(controller.commit(importA, () => { dom.status = "Import rejected: A"; dom.result = "A"; }), false);
+  assert.equal(controller.commit(importB, () => { dom.status = "Import rejected: B"; }), true);
+  assert.deepEqual(dom, { status: "Import rejected: B", result: "B" });
+});

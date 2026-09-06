@@ -275,7 +275,10 @@ async function importRun(event) {
       showToast("Run imported and reopened.");
     }
   } catch (error) {
-    if (runController.isCurrentGeneration(importGeneration)) showToast(`Import rejected: ${error.message}`);
+    if (runController.isCurrentGeneration(importGeneration)) {
+      $("runStatus").textContent = `Import rejected: ${error.message}`;
+      showToast(`Import rejected: ${error.message}`);
+    }
   } finally {
     if (runController.isCurrentGeneration(importGeneration)) event.target.value = "";
   }
