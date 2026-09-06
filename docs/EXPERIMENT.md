@@ -15,16 +15,17 @@ At matched accepted-update and measured-compute budgets, can a lagged usefulness
 
 ## Final measured-cost investigation
 
-`npm run experiment:final -- --out=work/final-investigation.json` is a separate
-CPU-only protocol for the remaining identification gap. The current source
-amendment is `raw-batch-cv-k5-v1`, distinct from the consumed pilot report. It
-keeps all seven methods and both model families, tunes only on training seeds
-42–44, calibrates one training-selected fixed repetition count `R`, then
-measures five (`K=5`) outer training batches after warmup and evaluates paired held-out
-seeds 100–107 across two unseen recurrence/noise cells and never-repeating
-controls. It records process CPU deltas, monotonic wall time, the existing
-operation ledger, full traces, host metadata, timing CV, measured-cost bins,
-bootstrap intervals and paired sign-permutation checks.
+The separate CPU-only final runner addressed the remaining identification gap.
+Its source amendment is `raw-batch-cv-k5-v1`, distinct from the consumed pilot
+report. It keeps all seven methods and both model families, tunes only on
+training seeds 42–44, calibrates one training-selected fixed repetition count
+`R`, then measures five (`K=5`) outer training batches after warmup and
+evaluates paired held-out seeds 100–107 across two unseen recurrence/noise
+cells and never-repeating controls. It records process CPU deltas, monotonic
+wall time, the existing operation ledger, full traces, host metadata, timing
+CV, measured-cost bins, bootstrap intervals and paired sign-permutation checks.
+The two registered attempts are consumed; this runner is retained for audit
+and must not be used as a retry.
 
 Each measured training batch wraps the complete `R`-call batch in one CPU/wall
 interval. Candidate cost is the raw batch total divided by `R`; comparability
