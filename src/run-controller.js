@@ -49,16 +49,15 @@ export function createRunController() {
 
     cancel() {
       const job = current;
+      if (!job) return null;
       invalidate(job);
-      nextGeneration();
-      return job;
+      return { job, generation: nextGeneration() };
     },
 
     finish(job) {
       if (!isCurrent(job)) return false;
       invalidate(job);
-      nextGeneration();
-      return true;
+      return nextGeneration();
     },
 
     current() {

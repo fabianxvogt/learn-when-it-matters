@@ -174,6 +174,7 @@ function renderResults(run, context = null) {
 async function run() {
   const config = readConfig();
   const job = runController.begin(config);
+  if (!runController.isCurrent(job)) return;
   $("runButton").disabled = true;
   $("pauseButton").disabled = false;
   $("pauseButton").textContent = "Pause run";
@@ -206,11 +207,13 @@ async function run() {
     }
   } finally {
     if (runController.isCurrent(job)) {
-      runController.finish(job);
-      $("runButton").disabled = false;
-      $("pauseButton").disabled = true;
-      $("pauseButton").textContent = "Pause run";
-      $("cancelButton").disabled = true;
+      const finishedGeneration = runController.finish(job);
+      if (finishedGeneration !== false && runController.isCurrentGeneration(finishedGeneration)) {
+        $("runButton").disabled = false;
+        $("pauseButton").disabled = true;
+        $("pauseButton").textContent = "Pause run";
+        $("cancelButton").disabled = true;
+      }
     }
   }
 }
@@ -235,18 +238,21 @@ function saveLocally() {
   }
 }
 
-function setIdleControls() {
+function setIdleControls(generation = null) {
+  if (generation !== null && !runController.isCurrentGeneration(generation)) return false;
   $("runButton").disabled = false;
   $("pauseButton").disabled = true;
   $("pauseButton").textContent = "Pause run";
   $("cancelButton").disabled = true;
+  return true;
 }
 
 function cancelCurrentRun() {
   const job = currentJob();
   if (!job) return false;
-  runController.cancel();
-  setIdleControls();
+  const cancellation = runController.cancel();
+  if (!cancellation || !runController.isCurrentGeneration(cancellation.generation)) return false;
+  if (!setIdleControls(cancellation.generation)) return false;
   $("runStatus").textContent = "Run cancelled. You can change the budget and retry.";
   return true;
 }
@@ -255,7 +261,8 @@ async function importRun(event) {
   const file = event.target.files?.[0];
   if (!file) return;
   const importGeneration = runController.beginImport();
-  setIdleControls();
+  if (!runController.isCurrentGeneration(importGeneration)) return;
+  setIdleControls(importGeneration);
   $("runStatus").textContent = "Reading saved run…";
   try {
     const parsed = JSON.parse(await file.text());
@@ -275,10 +282,11 @@ async function importRun(event) {
 }
 
 function reset() {
-  runController.reset();
+  const resetGeneration = runController.reset();
+  if (!runController.isCurrentGeneration(resetGeneration)) return;
   setConfig(DEFAULT_CONFIG);
   lastRun = null;
-  setIdleControls();
+  setIdleControls(resetGeneration);
   $("bestMse").textContent = "—"; $("bestMseMethod").textContent = "run to measure"; $("bestEfficiency").textContent = "—"; $("bestEfficiencyMethod").textContent = "probes included"; $("decisionCount").textContent = "—";
   $("resultsBody").innerHTML = '<tr><td colspan="6" class="empty-cell">No run yet. The seeded example is ready.</td></tr>';
   $("chartDataBody").innerHTML = '<tr><td colspan="4" class="empty-cell">Run the comparison to populate this table.</td></tr>';

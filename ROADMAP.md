@@ -42,7 +42,7 @@ State: **product/reproducibility delivery / scientific attempt closed as bounded
 
 | Check | Evidence | State |
 | --- | --- | --- |
-| Predict before label | `src/core.js` freezes prediction and action before `target` is read; tests cover trace determinism | implemented; test pending in this checkout |
+| Predict before label | `src/core.js` freezes prediction and action before `target` is read; core tests cover trace determinism | implemented; verified by the full local suite |
 | No same-step residual gating | Surprise uses input innovation; change-point uses prior residual state | implemented |
 | Lagged usefulness probe | Candidate from `t-1`, shadow transfer resolved on `t`, evidence affects `t+1+` | implemented |
 | Matched accounting | Accepted updates plus probe forwards, candidate gradients, optimizer/matrix ops, copies, discarded candidates, budget-skipped requests and measured CPU/wall ms | implemented; browser trace now exposes the ledger |
