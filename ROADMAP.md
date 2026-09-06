@@ -30,7 +30,7 @@ State: **verification / final investigation implementation frozen for review**
 - [x] CPU-only local repeated-run CLI with train-only bounded tuning, frozen update-budget slices, held-out recurring and never-repeating controls.
 - [x] Tiny recurrent learner runs locally; browser linear preview is labeled separately.
 - [x] Focused README, docs navigation, MIT license and static hosting metadata.
-- [x] Separate final-investigation runner with train-only CPU/wall calibration, strict bins, upper-cost ceilings, paired held-out rows, timing tolerances, replay checks and inconclusive outcomes.
+- [x] Separate final-investigation runner with train-only CPU/wall calibration, strict bins, pairwise componentwise upper-cost ceilings, per-model strict manifests, seed-safe pairing, full execution fingerprints, timing tolerances, replay checks and inconclusive outcomes.
 
 ## Full-v1 acceptance matrix
 

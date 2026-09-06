@@ -25,4 +25,8 @@ intersection, its separate upper-cost ceiling table keeps cheaper controls
 eligible and remains descriptive rather than a synthetic matched-cost claim.
 The final runner also fails closed on manifest coverage, measures fixed-repeat
 batches over one interval, and emits a deterministic replay audit before
-accepting a completed matrix.
+accepting a completed matrix. The repair adds a componentwise CPU/wall ceiling
+envelope, strict availability and coverage checks for both model families,
+seed-keyed paired differences, full execution fingerprints, and the exact
+integer 20% invalid-timing rule. These are source-level checks only until an
+independent reviewer accepts the exact commit.

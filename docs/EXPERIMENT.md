@@ -39,7 +39,8 @@ when timing is outside tolerance; a whole bin/cell becomes inconclusive when
 cannot publish a conclusion.
 
 If the strict intersection is empty, the runner also constructs predeclared
-train-locked upper CPU+wall cost ceilings. Candidates at or below a ceiling
+train-locked upper CPU+wall cost ceilings from pairwise componentwise maxima.
+Candidates at or below a ceiling
 remain eligible, including cheaper controls; no work is added to manufacture a
 lower-band match. Ceiling results are reported as descriptive dominance/error
 evidence and are never relabeled as strict matched-bin results.

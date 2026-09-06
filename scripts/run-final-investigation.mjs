@@ -127,8 +127,8 @@ export function timingIsComparable(timing, maxCv = FINAL_PROTOCOL.maxTimingCv) {
 }
 
 export function timingCoverageEligible(inBudgetCount, totalCount) {
-  if (totalCount <= 0) return false;
-  return (totalCount - inBudgetCount) / totalCount < 0.2;
+  const outOfBudgetCount = totalCount - inBudgetCount;
+  return totalCount > 0 && outOfBudgetCount * 5 < totalCount;
 }
 
 export function withinTolerance(value, center, tolerance = FINAL_PROTOCOL.tolerance) {
@@ -150,6 +150,10 @@ function streamFor(config, seed, variant) {
 
 export function configFingerprint(config) {
   return JSON.stringify({ horizon: config.horizon, recurrence: config.recurrence, noise: config.noise, streamVariant: config.streamVariant ?? "training-recurring" });
+}
+
+export function executionFingerprint({ model, methodId, config, params, updateBudget }) {
+  return JSON.stringify({ model, methodId, cell: JSON.parse(configFingerprint(config)), params: params ?? {}, updateBudget: updateBudget ?? config.updateBudget, seed: config.seed });
 }
 
 async function runModel(modelId, methodId, stream, config) {
@@ -296,7 +300,11 @@ export function constructCostCeilings(table, modelId, options = {}) {
   const methods = METHOD_DEFS.map((method) => method.id);
   const eligible = table.filter((cell) => cell.model === modelId && cell.calibration.comparable && cell.timingCv <= maxCv);
   const frontier = eligible.map((cell) => ({ methodId: cell.methodId, budget: cell.budget, params: cell.params, trainMse: cell.trainMse, timingCpuMs: cell.timingCpuMs, timingWallMs: cell.timingWallMs, timingCv: cell.timingCv }));
-  const candidates = [...new Map(eligible.map((cell) => [`${cell.timingCpuMs.toFixed(6)}|${cell.timingWallMs.toFixed(6)}`, { cpuMs: cell.timingCpuMs, wallMs: cell.timingWallMs }])).values()]
+  const envelopePoints = [];
+  for (const left of eligible) {
+    for (const right of eligible) envelopePoints.push({ cpuMs: Math.max(left.timingCpuMs, right.timingCpuMs), wallMs: Math.max(left.timingWallMs, right.timingWallMs) });
+  }
+  const candidates = [...new Map(envelopePoints.map((point) => [`${point.cpuMs.toFixed(6)}|${point.wallMs.toFixed(6)}`, point])).values()]
     .sort((left, right) => left.cpuMs - right.cpuMs || left.wallMs - right.wallMs);
   const feasible = candidates.filter((ceiling) => methods.every((methodId) => eligible.some((cell) => cell.methodId === methodId && cell.timingCpuMs <= ceiling.cpuMs && cell.timingWallMs <= ceiling.wallMs)));
   if (!feasible.length) return { status: "no-common-ceiling", reason: "no-train-feasible-upper-cost-ceiling", measuredFrontier: frontier, ceilings: [] };
@@ -337,6 +345,7 @@ function fullEvaluationRow(measured, modelId, methodId, candidate, config, strea
       ? { cpuMs: timing.cpuMs, wallMs: timing.wallMs, batchCpuMs: timing.batchCpuMs, batchWallMs: timing.batchWallMs, repeatCount: timing.repeatCount, cpuInTolerance: null, wallInTolerance: null, atOrBelowCeiling: inDeclaredRange }
       : { cpuMs: timing.cpuMs, wallMs: timing.wallMs, batchCpuMs: timing.batchCpuMs, batchWallMs: timing.batchWallMs, repeatCount: timing.repeatCount, cpuInTolerance: withinTolerance(timing.cpuMs, bin.cpuMs), wallInTolerance: withinTolerance(timing.wallMs, bin.wallMs), atOrBelowCeiling: null },
     configFingerprint: configFingerprint(config),
+    executionFingerprint: executionFingerprint({ model: modelId, methodId, config, params: candidate.params, updateBudget: candidate.budget }),
     binValidityReason: evaluationMode === "cost-ceiling" ? (inDeclaredRange ? "at-or-below-train-locked-ceiling" : "over-train-locked-ceiling") : (inDeclaredRange ? "in-tolerance" : "outside-declared-cpu-or-wall-tolerance"),
     mse: result.mse,
     areaUnderAdaptation: result.losses.reduce((sum, value) => sum + value, 0),
@@ -435,20 +444,27 @@ function comparableRow(row) {
   return row.timing.cpuInTolerance && row.timing.wallInTolerance;
 }
 
-export function buildEvaluationManifest(plansByModel, mode) {
+export function buildEvaluationManifestForModels(plansByModel, mode, selectedModels = MODEL_DEFS) {
   const manifest = [];
-  for (const model of MODEL_DEFS) {
+  for (const model of selectedModels) {
     for (const plan of plansByModel[model.id] ?? []) {
       const binId = mode === "cost-ceiling" ? plan.ceilingId : plan.binId;
       for (const cell of EVALUATION_CELLS) {
         for (const seed of protocol.evaluationSeeds) {
-          const expectedConfig = { horizon: protocol.horizon, recurrence: cell.recurrence, noise: cell.noise, streamVariant: cell.streamVariant };
-          for (const method of METHOD_DEFS) manifest.push({ mode, model: model.id, methodId: method.id, cellId: cell.id, suite: cell.suite, seed, binId, configFingerprint: configFingerprint(expectedConfig), key: `${mode}|${model.id}|${method.id}|${cell.id}|${seed}|${binId}` });
+          const expectedConfig = { horizon: protocol.horizon, recurrence: cell.recurrence, noise: cell.noise, streamVariant: cell.streamVariant, seed };
+          for (const method of METHOD_DEFS) {
+            const selection = plan.selections[method.id];
+            manifest.push({ mode, model: model.id, methodId: method.id, cellId: cell.id, suite: cell.suite, seed, binId, configFingerprint: configFingerprint(expectedConfig), executionFingerprint: executionFingerprint({ model: model.id, methodId: method.id, config: expectedConfig, params: selection?.params, updateBudget: selection?.budget }), key: `${mode}|${model.id}|${method.id}|${cell.id}|${seed}|${binId}` });
+          }
         }
       }
     }
   }
   return manifest;
+}
+
+export function buildEvaluationManifest(plansByModel, mode) {
+  return buildEvaluationManifestForModels(plansByModel, mode, MODEL_DEFS);
 }
 
 export function auditCoverage(rows, manifest) {
@@ -462,7 +478,7 @@ export function auditCoverage(rows, manifest) {
     if (!expected.has(key)) unexpected.push(key);
     seen.set(key, (seen.get(key) ?? 0) + 1);
     const expectedEntry = expected.get(key);
-    if (expectedEntry && (row.suite !== expectedEntry.suite || row.streamSpec.variant !== (expectedEntry.suite === "heldout-recurring" ? "heldout-recurring" : "never-repeating") || row.configFingerprint !== expectedEntry.configFingerprint)) wrongStream.push(key);
+    if (expectedEntry && (row.suite !== expectedEntry.suite || row.streamSpec.variant !== (expectedEntry.suite === "heldout-recurring" ? "heldout-recurring" : "never-repeating") || row.configFingerprint !== expectedEntry.configFingerprint || row.executionFingerprint !== expectedEntry.executionFingerprint)) wrongStream.push(key);
   }
   const duplicates = [...seen.entries()].filter(([, count]) => count > 1).map(([key]) => key);
   const missing = manifest.filter((entry) => !seen.has(entry.key)).map((entry) => entry.key);
@@ -477,6 +493,16 @@ export function auditCoverage(rows, manifest) {
   };
 }
 
+export function pairSeedDifferences(gateRows, controlRows, seeds = protocol.evaluationSeeds) {
+  const gateBySeed = new Map(gateRows.map((row) => [row.seed, row]));
+  const controlBySeed = new Map(controlRows.map((row) => [row.seed, row]));
+  return seeds.map((seed) => {
+    const gateRow = gateBySeed.get(seed);
+    const controlRow = controlBySeed.get(seed);
+    return { seed, difference: gateRow && controlRow ? gateRow.mse - controlRow.mse : null };
+  });
+}
+
 function analyzeHeldOut(rows, coverage = { complete: false }) {
   const groups = new Map();
   for (const row of rows.filter((item) => item.suite === "heldout-recurring")) {
@@ -488,13 +514,15 @@ function analyzeHeldOut(rows, coverage = { complete: false }) {
   for (const [key, group] of groups) {
     const [model, cellId, binId] = key.split("|");
     const byMethod = Object.fromEntries(METHOD_DEFS.map((method) => [method.id, group.filter((row) => row.methodId === method.id)]));
+    const inToleranceCounts = Object.fromEntries(METHOD_DEFS.map((method) => [method.id, byMethod[method.id].filter(comparableRow).length]));
     const rates = Object.fromEntries(METHOD_DEFS.map((method) => [method.id, mean(byMethod[method.id].map((row) => comparableRow(row) ? 1 : 0))]));
-    const valid = METHOD_DEFS.every((method) => byMethod[method.id].length === protocol.evaluationSeeds.length && rates[method.id] > FINAL_PROTOCOL.minimumInToleranceRate);
+    const valid = METHOD_DEFS.every((method) => byMethod[method.id].length === protocol.evaluationSeeds.length && timingCoverageEligible(inToleranceCounts[method.id], byMethod[method.id].length));
     const gateRows = byMethod["causal-gate"];
     const controls = Object.fromEntries(METHOD_DEFS.filter((method) => method.id !== "causal-gate").map((method) => {
-      const controlRows = byMethod[method.id];
-      const paired = gateRows.map((gateRow) => controlRows.find((controlRow) => controlRow.seed === gateRow.seed)).filter(Boolean).map((controlRow, index) => gateRows[index].mse - controlRow.mse);
-      return [method.id, { pairedDifferences: paired, meanDifference: mean(paired), bootstrapInterval: bootstrapInterval(paired, model.length + cellId.length + binId.length), signPermutation: signPermutation(paired), valid }];
+      const paired = pairSeedDifferences(gateRows, byMethod[method.id]);
+      const observed = paired.filter((pair) => pair.difference !== null).map((pair) => pair.difference);
+      const pairingComplete = paired.every((pair) => pair.difference !== null);
+      return [method.id, { pairedDifferences: paired, pairingComplete, meanDifference: pairingComplete ? mean(observed) : null, bootstrapInterval: pairingComplete ? bootstrapInterval(observed, model.length + cellId.length + binId.length) : null, signPermutation: pairingComplete ? signPermutation(observed) : null, valid: valid && pairingComplete }];
     }));
     comparisons.push({ model, cellId, binId, valid, inToleranceRates: rates, controls });
   }
@@ -551,12 +579,24 @@ export function analyzeCostCeilings(rows) {
   });
 }
 
-export function assessCompletion({ strictAvailable, strictCoverageComplete, ceilingCoverageComplete, ceilingTimingComplete, runClassification = "registered-protocol" }) {
-  if (runClassification !== "registered-protocol") return { complete: false, status: "inconclusive-custom-nonregistered-run" };
-  if (!strictAvailable) return { complete: false, status: "inconclusive-no-strict-bin" };
-  if (!strictCoverageComplete || !ceilingCoverageComplete) return { complete: false, status: "inconclusive-incomplete-matrix" };
-  if (!ceilingTimingComplete) return { complete: false, status: "inconclusive-ceiling-coverage" };
-  return { complete: true, status: "complete" };
+export function assessCompletion({ strictAvailable, strictAvailabilityByModel, strictCoverageComplete, strictCoverageByModel, ceilingCoverageComplete, ceilingTimingComplete, runClassification = "registered-protocol" }) {
+  const modelsHaveStrict = strictAvailabilityByModel ? MODEL_DEFS.every((model) => strictAvailabilityByModel[model.id] === true) : strictAvailable === true;
+  const modelsHaveStrictCoverage = strictCoverageByModel ? MODEL_DEFS.every((model) => strictCoverageByModel[model.id] === true) : strictCoverageComplete === true;
+  if (runClassification !== "registered-protocol") return { complete: false, conclusionEligible: false, status: "inconclusive-custom-nonregistered-run" };
+  if (!modelsHaveStrict) return { complete: false, conclusionEligible: false, status: "inconclusive-no-strict-bin" };
+  if (!modelsHaveStrictCoverage || !ceilingCoverageComplete) return { complete: false, conclusionEligible: false, status: "inconclusive-incomplete-matrix" };
+  if (!ceilingTimingComplete) return { complete: false, conclusionEligible: false, status: "inconclusive-ceiling-coverage" };
+  return { complete: true, conclusionEligible: true, status: "complete" };
+}
+
+export function finalizeReportState({ completion, analysisDecision, runClassification }) {
+  const conclusionEligible = completion.complete && !analysisDecision.startsWith("inconclusive") && runClassification === "registered-protocol";
+  return {
+    complete: conclusionEligible,
+    status: conclusionEligible ? "complete" : (completion.status === "complete" ? "inconclusive-non-comparable" : completion.status),
+    structuralComplete: completion.complete,
+    conclusionEligible
+  };
 }
 
 function makeReport(partial) {
@@ -642,6 +682,8 @@ async function main() {
     }
     report.expectedManifests.strict = buildEvaluationManifest(report.lockedSelections, "strict-bin");
     report.expectedManifests.ceiling = buildEvaluationManifest(report.ceilingSelections, "cost-ceiling");
+    report.expectedManifests.strictByModel = Object.fromEntries(MODEL_DEFS.map((model) => [model.id, buildEvaluationManifestForModels(report.lockedSelections, "strict-bin", [model])]));
+    report.expectedManifests.ceilingByModel = Object.fromEntries(MODEL_DEFS.map((model) => [model.id, buildEvaluationManifestForModels(report.ceilingSelections, "cost-ceiling", [model])]));
     report.fallbackRung = { name: "full-fixed-repetition-batch", timingRepeats: activeCalibrationRepeats, evaluationSeeds: protocol.evaluationSeeds.length, maxBins: protocol.maxBins, chosenFrom: "training-only calibration and declared resource cap" };
     persist();
     phase = "heldout-evaluation";
@@ -682,19 +724,22 @@ async function main() {
     }
     report.coverageAudits.strict = auditCoverage(report.heldOutRows, report.expectedManifests.strict);
     report.coverageAudits.ceiling = auditCoverage(report.ceilingRows, report.expectedManifests.ceiling);
+    report.coverageAudits.strictByModel = Object.fromEntries(MODEL_DEFS.map((model) => [model.id, auditCoverage(report.heldOutRows.filter((row) => row.model === model.id), report.expectedManifests.strictByModel[model.id])]));
+    report.coverageAudits.ceilingByModel = Object.fromEntries(MODEL_DEFS.map((model) => [model.id, auditCoverage(report.ceilingRows.filter((row) => row.model === model.id), report.expectedManifests.ceilingByModel[model.id])]));
     report.analysis = analyzeHeldOut(report.heldOutRows, report.coverageAudits.strict);
     report.ceilingAnalysis = analyzeCostCeilings(report.ceilingRows);
     if (report.runClassification !== "registered-protocol") report.analysis.decision = "inconclusive-custom-nonregistered-run";
     const completion = assessCompletion({
-      strictAvailable: report.expectedManifests.strict.length > 0,
-      strictCoverageComplete: report.coverageAudits.strict.complete,
+      strictAvailabilityByModel: Object.fromEntries(MODEL_DEFS.map((model) => [model.id, report.commonBins[model.id]?.status === "ok" && report.lockedSelections[model.id]?.length > 0])),
+      strictCoverageByModel: Object.fromEntries(MODEL_DEFS.map((model) => [model.id, report.coverageAudits.strictByModel[model.id].complete])),
       ceilingCoverageComplete: report.coverageAudits.ceiling.complete,
       ceilingTimingComplete: report.ceilingAnalysis.length > 0 && report.ceilingAnalysis.every((group) => group.timingCoverageComplete),
       runClassification: report.runClassification
     });
-    report.completion = { ...completion, strictCoverage: report.coverageAudits.strict, ceilingCoverage: report.coverageAudits.ceiling, ceilingTimingEligible: report.ceilingAnalysis.length > 0 && report.ceilingAnalysis.every((group) => group.timingCoverageComplete) };
-    report.complete = completion.complete;
-    report.status = completion.status === "complete" && report.analysis.decision.startsWith("inconclusive") ? "inconclusive-non-comparable" : completion.status;
+    const reportState = finalizeReportState({ completion, analysisDecision: report.analysis.decision, runClassification: report.runClassification });
+    report.completion = { ...completion, ...reportState, strictCoverage: report.coverageAudits.strict, ceilingCoverage: report.coverageAudits.ceiling, ceilingTimingEligible: report.ceilingAnalysis.length > 0 && report.ceilingAnalysis.every((group) => group.timingCoverageComplete) };
+    report.complete = reportState.complete;
+    report.status = reportState.status;
     report.progress = { stage: "complete", rows: report.heldOutRows.length + report.ceilingRows.length };
     terminationReason = report.complete ? "completed" : "incomplete-required-matrix";
     phase = "complete";

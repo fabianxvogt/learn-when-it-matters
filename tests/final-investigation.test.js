@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_CONFIG, generateStream } from "../src/core.js";
 import { METHOD_DEFS } from "../src/core.js";
-import { analyzeCostCeilings, assessCompletion, auditCoverage, buildEvaluationManifest, configFingerprint, constructCommonBins, constructCostCeilings, measureBatchInvocation, replayTrace, runReplayAudit, selectCeilingCandidates, selectLockedCandidates, signPermutation, timingCoverageEligible, timingIsComparable } from "../scripts/run-final-investigation.mjs";
+import { analyzeCostCeilings, assessCompletion, auditCoverage, buildEvaluationManifest, configFingerprint, constructCommonBins, constructCostCeilings, executionFingerprint, finalizeReportState, measureBatchInvocation, pairSeedDifferences, replayTrace, runReplayAudit, selectCeilingCandidates, selectLockedCandidates, signPermutation, timingCoverageEligible, timingIsComparable } from "../scripts/run-final-investigation.mjs";
 
 function syntheticCell(model, methodId, trainMse = 0.1, cpuMs = 10, wallMs = 10) {
   return {
@@ -52,6 +52,17 @@ test("a strict-bin gap still exposes a train-locked upper-cost ceiling", () => {
   assert.ok(selections[0].selections.always.timingCpuMs <= ceilings.ceilings[0].cpuMs);
 });
 
+test("componentwise CPU/wall envelope covers crossed training costs", () => {
+  const crossed = [
+    syntheticCell("linear-online", "causal-gate", 0.1, 10, 12),
+    syntheticCell("linear-online", "always", 0.1, 8, 15),
+    ...METHOD_DEFS.slice(2).map((method) => syntheticCell("linear-online", method.id, 0.1, 5, 5))
+  ];
+  const ceilings = constructCostCeilings(crossed, "linear-online", { maxCeilings: 3 });
+  assert.equal(ceilings.status, "ok");
+  assert.ok(ceilings.ceilings.some((ceiling) => ceiling.cpuMs === 10 && ceiling.wallMs === 15));
+});
+
 test("timing comparability and paired sign permutation are explicit", () => {
   assert.equal(timingIsComparable({ cpu: { cv: 0.2 }, wall: { cv: 0.19 } }), true);
   assert.equal(timingIsComparable({ cpu: { cv: 0.21 }, wall: { cv: 0.01 } }), false);
@@ -64,11 +75,14 @@ test("exactly twenty percent out-of-ceiling rows is inconclusive", () => {
   assert.equal(timingCoverageEligible(5, 5), true);
   assert.equal(timingCoverageEligible(4, 5), false);
   assert.equal(timingCoverageEligible(3, 5), false);
+  assert.equal(timingCoverageEligible(5, 6), true);
+  assert.equal(timingCoverageEligible(4, 6), false);
 });
 
 test("strict no-bin status cannot become a completed conclusion", () => {
-  assert.deepEqual(assessCompletion({ strictAvailable: false, strictCoverageComplete: false, ceilingCoverageComplete: true, ceilingTimingComplete: true }), { complete: false, status: "inconclusive-no-strict-bin" });
-  assert.deepEqual(assessCompletion({ strictAvailable: true, strictCoverageComplete: true, ceilingCoverageComplete: true, ceilingTimingComplete: false }), { complete: false, status: "inconclusive-ceiling-coverage" });
+  assert.deepEqual(assessCompletion({ strictAvailabilityByModel: { "linear-online": false, "tiny-recurrent": true }, strictCoverageByModel: { "linear-online": false, "tiny-recurrent": true }, ceilingCoverageComplete: true, ceilingTimingComplete: true }), { complete: false, conclusionEligible: false, status: "inconclusive-no-strict-bin" });
+  assert.deepEqual(assessCompletion({ strictAvailabilityByModel: { "linear-online": false, "tiny-recurrent": false }, strictCoverageByModel: { "linear-online": false, "tiny-recurrent": false }, ceilingCoverageComplete: true, ceilingTimingComplete: true }), { complete: false, conclusionEligible: false, status: "inconclusive-no-strict-bin" });
+  assert.deepEqual(assessCompletion({ strictAvailabilityByModel: { "linear-online": true, "tiny-recurrent": true }, strictCoverageByModel: { "linear-online": true, "tiny-recurrent": true }, ceilingCoverageComplete: true, ceilingTimingComplete: false }), { complete: false, conclusionEligible: false, status: "inconclusive-ceiling-coverage" });
 });
 
 test("calibration/evaluation batching measures one fixed interval and divides it consistently", async () => {
@@ -105,6 +119,30 @@ test("coverage fingerprints the complete held-out cell configuration", () => {
   const audit = auditCoverage([row], manifest);
   assert.deepEqual(audit.wrongStream, [entry.key]);
   assert.equal(audit.complete, false);
+});
+
+test("coverage also fingerprints the locked execution configuration", () => {
+  const plans = { "linear-online": [{ binId: "bin-1", selections: { "causal-gate": { params: { probeInterval: 2 }, budget: 30 } } }], "tiny-recurrent": [] };
+  const manifest = buildEvaluationManifest(plans, "strict-bin");
+  const entry = manifest.find((item) => item.methodId === "causal-gate");
+  const row = { evaluationMode: entry.mode, model: entry.model, methodId: entry.methodId, cellId: entry.cellId, seed: entry.seed, bin: { id: entry.binId }, suite: entry.suite, configFingerprint: entry.configFingerprint, executionFingerprint: executionFingerprint({ model: entry.model, methodId: entry.methodId, config: { horizon: 240, recurrence: 0.6, noise: 0.04, streamVariant: "heldout-recurring", seed: entry.seed }, params: { probeInterval: 8 }, updateBudget: 30 }), streamSpec: { variant: "heldout-recurring" } };
+  const audit = auditCoverage([row], [entry]);
+  assert.deepEqual(audit.wrongStream, [entry.key]);
+});
+
+test("paired differences keep a missing seed as a missing pair", () => {
+  const gateRows = [{ seed: 100, mse: 4 }, { seed: 101, mse: 5 }, { seed: 102, mse: 6 }];
+  const controlRows = [{ seed: 100, mse: 3 }, { seed: 102, mse: 4 }];
+  assert.deepEqual(pairSeedDifferences(gateRows, controlRows, [100, 101, 102]), [
+    { seed: 100, difference: 1 },
+    { seed: 101, difference: null },
+    { seed: 102, difference: 2 }
+  ]);
+});
+
+test("complete structure cannot become a conclusion with inconclusive analysis", () => {
+  const state = finalizeReportState({ completion: { complete: true, status: "complete" }, analysisDecision: "inconclusive-non-comparable", runClassification: "registered-protocol" });
+  assert.deepEqual(state, { complete: false, status: "inconclusive-non-comparable", structuralComplete: true, conclusionEligible: false });
 });
 
 test("ceiling analysis marks a cell with twenty percent over-budget rows inconclusive", () => {
