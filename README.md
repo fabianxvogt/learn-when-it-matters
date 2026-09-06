@@ -10,7 +10,7 @@ Status: **product/reproducibility delivery; scientific attempt closed bounded IN
 npm run dev
 ```
 
-Open `http://127.0.0.1:4173`. The first screen is the working surface: configure a seeded recurrence/noise stream, update budget and probe accounting; run paired methods; inspect predictions, actions, charged probes and the ledger; pause or cancel at the browser limit; save, reload, export, import or reset. The browser is a linear online-regressor preview. The tiny recurrent learner is local-CLI-only.
+Open `http://127.0.0.1:4173`. The first screen is the working surface: configure a seeded recurrence/noise stream, update budget and probe accounting; run paired methods; inspect predictions, actions, charged probes and the ledger; pause or cancel at the browser limit; save, reload, export, import or reset. Run and import state is generation-guarded, so late work cannot replace a newer result or reset. The browser is a linear online-regressor preview. The tiny recurrent learner is local-CLI-only.
 
 For the bounded local comparison:
 

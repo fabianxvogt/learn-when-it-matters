@@ -1,10 +1,12 @@
 import { DEFAULT_CONFIG, METHOD_DEFS, formatNumber, runComparison } from "./src/core.js";
+import { createRunController } from "./src/run-controller.js";
+import { isValidImportedRun } from "./src/run-validation.js";
 
 const STORAGE_KEY = "learn-when-it-matters:v1:last-run";
 const colors = { signal: "#c9ff4f", red: "#ff7c8c", blue: "#77b8ff", violet: "#c0a3ff", orange: "#ffae72", green: "#6ee0b5", slate: "#a6b2bc" };
 const $ = (id) => document.getElementById(id);
-let activeRun = null;
 let lastRun = null;
+const runController = createRunController();
 
 function readConfig() {
   return {
@@ -57,15 +59,12 @@ function renderLegend() {
   $("legend").innerHTML = METHOD_DEFS.map((item) => `<span class="legend-item"><i class="legend-swatch" style="background:${colors[item.tone]}"></i>${item.label}</span>`).join("");
 }
 
-function releasePauseWaiters() {
-  if (!activeRun?.pauseWaiters) return;
-  const waiters = activeRun.pauseWaiters.splice(0);
-  waiters.forEach((resolve) => resolve());
-}
+function currentJob() { return runController.current(); }
 
-function waitIfPaused() {
-  if (!activeRun?.paused) return Promise.resolve();
-  return new Promise((resolve) => activeRun.pauseWaiters.push(resolve));
+function setProgressFor(job, fraction, label) {
+  if (!runController.isCurrent(job)) return false;
+  setProgress(fraction, label);
+  return true;
 }
 
 function renderAccessibleChartTable(run) {
@@ -147,7 +146,8 @@ function drawChart(run) {
   ctx.fillText("t", width - 12, height - 7);
 }
 
-function renderResults(run) {
+function renderResults(run, context = null) {
+  if (context !== null && !runController.commit(context, () => {})) return false;
   lastRun = run;
   const bestMse = run.results.find((result) => result.methodId === run.bestByMse) ?? [...run.results].sort((a, b) => a.mse - b.mse)[0];
   const bestEfficiency = run.results.find((result) => result.methodId === run.bestByEfficiency) ?? [...run.results].sort((a, b) => a.errorPerCost - b.errorPerCost)[0];
@@ -168,40 +168,50 @@ function renderResults(run) {
   const causal = run.results.find((result) => result.methodId === "causal-gate");
   const classical = run.results.find((result) => result.methodId === "classical");
   $("readoutText").textContent = `One seeded browser stream only: the readouts are descriptive, not a scientific winner, equivalence, or negative result. The causal gate charged ${causal.probeCount} probes, ${causal.discardedCandidates ?? causal.discardedUpdates} discarded candidates, and ${formatNumber(causal.costLedger.elapsedWallMs, 1)} ms wall time; RLS is included as a classical tracking control (${formatNumber(classical.mse, 4)} MSE).`;
+  return true;
 }
 
 async function run() {
-  if (activeRun) return;
   const config = readConfig();
-  activeRun = { cancelled: false, paused: false, pauseWaiters: [] };
+  const job = runController.begin(config);
   $("runButton").disabled = true;
   $("pauseButton").disabled = false;
   $("pauseButton").textContent = "Pause run";
   $("cancelButton").disabled = false;
   $("progressWrap").hidden = false;
-  setProgress(0, "Preparing stream");
+  setProgressFor(job, 0, "Preparing stream");
   $("runStatus").textContent = "Predictions are frozen before each label; methods are paired on one stream.";
   try {
-    const runResult = await runComparison(config, (fraction) => setProgress(fraction, activeRun?.paused ? "Paused" : "Running paired methods"), () => activeRun?.cancelled, waitIfPaused);
-    if (activeRun?.cancelled) return;
-    renderResults(runResult);
-    setProgress(1, "Comparison complete");
-    $("runStatus").textContent = `Complete. ${runResult.config.horizon} labels scored across ${METHOD_DEFS.length} methods.`;
-    showToast("Comparison complete");
+    const runResult = await runComparison(
+      job.config,
+      (fraction) => setProgressFor(job, fraction, job.paused ? "Paused" : "Running paired methods"),
+      () => job.cancelled || !runController.isCurrent(job),
+      () => runController.waitIfPaused(job)
+    );
+    if (!runController.isCurrent(job)) return;
+    if (!renderResults(runResult, job)) return;
+    setProgressFor(job, 1, "Comparison complete");
+    if (runController.isCurrent(job)) {
+      $("runStatus").textContent = `Complete. ${runResult.config.horizon} labels scored across ${METHOD_DEFS.length} methods.`;
+      showToast("Comparison complete");
+    }
   } catch (error) {
-    if (error.message !== "Experiment cancelled") {
-      $("runStatus").textContent = `Run failed: ${error.message}`;
-      showToast("The run failed; configuration was not discarded.");
-    } else {
-      $("runStatus").textContent = "Run cancelled. You can change the budget and retry.";
+    if (runController.isCurrent(job)) {
+      if (error.message !== "Experiment cancelled") {
+        $("runStatus").textContent = `Run failed: ${error.message}`;
+        showToast("The run failed; configuration was not discarded.");
+      } else {
+        $("runStatus").textContent = "Run cancelled. You can change the budget and retry.";
+      }
     }
   } finally {
-    releasePauseWaiters();
-    activeRun = null;
-    $("runButton").disabled = false;
-    $("pauseButton").disabled = true;
-    $("pauseButton").textContent = "Pause run";
-    $("cancelButton").disabled = true;
+    if (runController.isCurrent(job)) {
+      runController.finish(job);
+      $("runButton").disabled = false;
+      $("pauseButton").disabled = true;
+      $("pauseButton").textContent = "Pause run";
+      $("cancelButton").disabled = true;
+    }
   }
 }
 
@@ -225,43 +235,50 @@ function saveLocally() {
   }
 }
 
-function validImportedRun(parsed) {
-  const methodIds = new Set(METHOD_DEFS.map((item) => item.id));
-  return parsed?.version === 1
-    && parsed.config
-    && Array.isArray(parsed.stream)
-    && Array.isArray(parsed.results)
-    && parsed.results.length === METHOD_DEFS.length
-    && parsed.results.every((result) => methodIds.has(result.methodId)
-      && Number.isFinite(result.mse)
-      && Array.isArray(result.predictions)
-      && Array.isArray(result.losses)
-      && Array.isArray(result.actionTrace)
-      && result.predictions.length === result.losses.length
-      && result.losses.length === result.actionTrace.length
-      && parsed.stream.length === result.predictions.length
-      && result.costLedger
-      && Number.isFinite(result.cost));
+function setIdleControls() {
+  $("runButton").disabled = false;
+  $("pauseButton").disabled = true;
+  $("pauseButton").textContent = "Pause run";
+  $("cancelButton").disabled = true;
+}
+
+function cancelCurrentRun() {
+  const job = currentJob();
+  if (!job) return false;
+  runController.cancel();
+  setIdleControls();
+  $("runStatus").textContent = "Run cancelled. You can change the budget and retry.";
+  return true;
 }
 
 async function importRun(event) {
   const file = event.target.files?.[0];
   if (!file) return;
+  const importGeneration = runController.beginImport();
+  setIdleControls();
+  $("runStatus").textContent = "Reading saved run…";
   try {
     const parsed = JSON.parse(await file.text());
-    if (!validImportedRun(parsed)) throw new Error("This is not a complete Learn When It Matters v1 run.");
+    if (!runController.isCurrentGeneration(importGeneration)) return;
+    if (!isValidImportedRun(parsed)) throw new Error("This is not a complete Learn When It Matters v1 run.");
+    if (!runController.isCurrentGeneration(importGeneration)) return;
     setConfig(parsed.config);
-    renderResults(parsed);
-    showToast("Run imported and reopened.");
+    if (renderResults(parsed, importGeneration) && runController.isCurrentGeneration(importGeneration)) {
+      $("runStatus").textContent = "Saved run imported and reopened. Run fresh or import another versioned file.";
+      showToast("Run imported and reopened.");
+    }
   } catch (error) {
-    showToast(`Import rejected: ${error.message}`);
-  } finally { event.target.value = ""; }
+    if (runController.isCurrentGeneration(importGeneration)) showToast(`Import rejected: ${error.message}`);
+  } finally {
+    if (runController.isCurrentGeneration(importGeneration)) event.target.value = "";
+  }
 }
 
 function reset() {
-  if (activeRun) { activeRun.cancelled = true; activeRun.paused = false; releasePauseWaiters(); }
+  runController.reset();
   setConfig(DEFAULT_CONFIG);
   lastRun = null;
+  setIdleControls();
   $("bestMse").textContent = "—"; $("bestMseMethod").textContent = "run to measure"; $("bestEfficiency").textContent = "—"; $("bestEfficiencyMethod").textContent = "probes included"; $("decisionCount").textContent = "—";
   $("resultsBody").innerHTML = '<tr><td colspan="6" class="empty-cell">No run yet. The seeded example is ready.</td></tr>';
   $("chartDataBody").innerHTML = '<tr><td colspan="4" class="empty-cell">Run the comparison to populate this table.</td></tr>';
@@ -276,13 +293,14 @@ function reset() {
 for (const id of ["horizon", "recurrence", "noise"]) $(id).addEventListener("input", updateValueLabels);
 $("runButton").addEventListener("click", run);
 $("pauseButton").addEventListener("click", () => {
-  if (!activeRun) return;
-  activeRun.paused = !activeRun.paused;
-  $("pauseButton").textContent = activeRun.paused ? "Resume run" : "Pause run";
-  $("runStatus").textContent = activeRun.paused ? "Run paused. Resume or cancel when ready." : "Predictions are frozen before each label; methods are paired on one stream.";
-  if (!activeRun.paused) releasePauseWaiters();
+  const job = currentJob();
+  if (!job) return;
+  const paused = runController.togglePause(job);
+  if (!runController.isCurrent(job)) return;
+  $("pauseButton").textContent = paused ? "Resume run" : "Pause run";
+  $("runStatus").textContent = paused ? "Run paused. Resume or cancel when ready." : "Predictions are frozen before each label; methods are paired on one stream.";
 });
-$("cancelButton").addEventListener("click", () => { if (activeRun) { activeRun.cancelled = true; activeRun.paused = false; releasePauseWaiters(); } });
+$("cancelButton").addEventListener("click", cancelCurrentRun);
 $("exportButton").addEventListener("click", exportRun);
 $("saveButton").addEventListener("click", saveLocally);
 $("importInput").addEventListener("change", importRun);
@@ -300,7 +318,7 @@ try {
   const saved = localStorage.getItem(STORAGE_KEY);
   if (saved) {
     const restored = JSON.parse(saved);
-    if (validImportedRun(restored)) {
+    if (isValidImportedRun(restored)) {
       setConfig(restored.config);
       renderResults(restored);
       $("runStatus").textContent = "Saved run restored locally. Run fresh or import another versioned file.";
