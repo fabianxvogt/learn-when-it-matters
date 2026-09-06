@@ -40,7 +40,8 @@ when timing is outside tolerance; a whole bin/cell becomes inconclusive when
 `not estimable` until a hidden-switch fixture is added. The pilot has a
 600-second process-CPU cap and 1,800-second wall watchdog; incomplete runs
 cannot publish a conclusion. RSS is captured from
-`process.resourceUsage().maxRSS` with its platform-native unit. Any external
+`process.resourceUsage().maxRSS` and labeled in documented **kilobytes**; the
+raw value is not converted with a platform-specific `getrusage` rule. Any external
 watchdog must be no longer than 1,800 seconds.
 
 If the strict intersection is empty, the runner also constructs predeclared

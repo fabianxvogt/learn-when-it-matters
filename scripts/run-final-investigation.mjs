@@ -9,6 +9,8 @@ import { runRecurrentMethod } from "../src/recurrent.js";
 
 export const MEASUREMENT_PROTOCOL_VERSION = "raw-batch-cv-k5-v1";
 export const PROVENANCE_VERSION = "final-investigation-raw-batch-cv-k5-v1";
+export const RSS_UNIT = "kilobytes";
+export const RSS_SOURCE = "process.resourceUsage().maxRSS";
 
 export const FINAL_PROTOCOL = {
   measurementProtocolVersion: MEASUREMENT_PROTOCOL_VERSION,
@@ -88,6 +90,10 @@ function cpuMilliseconds(usage) {
   return (usage.userCPUTime + usage.systemCPUTime) / 1000;
 }
 
+function rssMetadata(usage) {
+  return { value: Number.isFinite(usage.maxRSS) ? usage.maxRSS : null, unit: RSS_UNIT, source: RSS_SOURCE };
+}
+
 export async function measureInvocation(invoke) {
   const beforeCpu = process.resourceUsage();
   const started = process.hrtime.bigint();
@@ -125,7 +131,7 @@ export async function measureBatchInvocation(invoke, count) {
     batchWallMs,
     cpuMs: batchCpuMs / count,
     wallMs: batchWallMs / count,
-    maxRSS: Number.isFinite(endUsage.maxRSS) ? endUsage.maxRSS : null
+    rss: rssMetadata(endUsage)
   };
 }
 
@@ -225,7 +231,7 @@ async function calibrateCandidate(modelId, methodId, candidate, budget) {
     batchWallMs: measured.meanBatchWallMs,
     dividedCpuMs: measured.dividedCpuMs,
     dividedWallMs: measured.dividedWallMs,
-    perBatch: measured.batches.map((batch, batchIndex) => ({ batchIndex, batchCpuMs: batch.batchCpuMs, batchWallMs: batch.batchWallMs, maxRSS: batch.maxRSS, perRepeat: batch.results.map((result, repeatIndex) => ({ repeatIndex, cpuMs: batch.segments[repeatIndex].cpuMs, wallMs: batch.segments[repeatIndex].wallMs, mse: result.mse, syntheticCost: result.cost })) })),
+    perBatch: measured.batches.map((batch, batchIndex) => ({ batchIndex, batchCpuMs: batch.batchCpuMs, batchWallMs: batch.batchWallMs, rss: batch.rss, perRepeat: batch.results.map((result, repeatIndex) => ({ repeatIndex, cpuMs: batch.segments[repeatIndex].cpuMs, wallMs: batch.segments[repeatIndex].wallMs, mse: result.mse, syntheticCost: result.cost })) })),
     perRepeat: measured.batches.flatMap((batch, batchIndex) => batch.results.map((result, repeatIndex) => ({ batchIndex, repeatIndex, cpuMs: batch.segments[repeatIndex].cpuMs, wallMs: batch.segments[repeatIndex].wallMs, mse: result.mse, syntheticCost: result.cost }))),
     segments: measured.segments,
     cpu: measured.cpu,
@@ -435,7 +441,7 @@ function hostMetadata() {
     calibrationRepeats: protocol.calibrationRepeats,
     calibrationBatches: protocol.calibrationBatches,
     measurementProtocolVersion: protocol.measurementProtocolVersion,
-    rss: { value: Number.isFinite(usage.maxRSS) ? usage.maxRSS : null, unit: "platform-native process.resourceUsage.maxRSS", source: "process.resourceUsage" },
+    rss: rssMetadata(usage),
     explicitGc: typeof global.gc === "function"
   };
 }
@@ -811,7 +817,7 @@ async function main() {
     const endUsage = process.resourceUsage();
     report.host.cpuUsedMs = totalCpuMs;
     report.host.wallUsedMs = totalWallMs;
-    report.host.rss.end = { value: Number.isFinite(endUsage.maxRSS) ? endUsage.maxRSS : null, unit: "platform-native process.resourceUsage.maxRSS", source: "process.resourceUsage" };
+    report.host.rss.end = rssMetadata(endUsage);
     report.host.endSnapshot = snapshot("end");
     report.termination = { reason: terminationReason, phase, totalCpuMs, totalWallMs, cpuCapSeconds: protocol.cpuCapSeconds, wallWatchdogSeconds: protocol.wallWatchdogSeconds, watchdogExceeded: totalCpuMs >= protocol.cpuCapSeconds * 1000 || totalWallMs >= protocol.wallWatchdogSeconds * 1000, lastCompletedCheckpoint: report.checkpoints.at(-1) ?? null };
     persist();

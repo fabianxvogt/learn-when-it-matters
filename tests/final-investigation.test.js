@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_CONFIG, generateStream } from "../src/core.js";
 import { METHOD_DEFS } from "../src/core.js";
-import { FINAL_PROTOCOL, MEASUREMENT_PROTOCOL_VERSION, PROVENANCE_VERSION, analyzeCostCeilings, assessCompletion, auditCoverage, buildEvaluationManifest, configFingerprint, constructCommonBins, constructCostCeilings, executionFingerprint, finalizeReportState, measureBatchInvocation, measureCalibrationBatches, pairSeedDifferences, replayTrace, runReplayAudit, selectCeilingCandidates, selectLockedCandidates, signPermutation, summarizeMeasuredBatches, timingCoverageEligible, timingIsComparable } from "../scripts/run-final-investigation.mjs";
+import { FINAL_PROTOCOL, MEASUREMENT_PROTOCOL_VERSION, PROVENANCE_VERSION, RSS_SOURCE, RSS_UNIT, analyzeCostCeilings, assessCompletion, auditCoverage, buildEvaluationManifest, configFingerprint, constructCommonBins, constructCostCeilings, executionFingerprint, finalizeReportState, measureBatchInvocation, measureCalibrationBatches, pairSeedDifferences, replayTrace, runReplayAudit, selectCeilingCandidates, selectLockedCandidates, signPermutation, summarizeMeasuredBatches, timingCoverageEligible, timingIsComparable } from "../scripts/run-final-investigation.mjs";
 
 function syntheticCell(model, methodId, trainMse = 0.1, cpuMs = 10, wallMs = 10) {
   return {
@@ -96,7 +96,9 @@ test("calibration/evaluation batching measures one fixed interval and divides it
   assert.equal(batch.segments.length, 3);
   assert.equal(batch.cpuMs, batch.batchCpuMs / 3);
   assert.equal(batch.wallMs, batch.batchWallMs / 3);
-  assert.ok(Object.hasOwn(batch, "maxRSS"));
+  assert.deepEqual(batch.rss, { value: batch.rss.value, unit: RSS_UNIT, source: RSS_SOURCE });
+  assert.equal(RSS_UNIT, "kilobytes");
+  assert.equal(RSS_SOURCE, "process.resourceUsage().maxRSS");
 });
 
 test("the amendment declares five raw-batch samples and a distinct provenance version", () => {

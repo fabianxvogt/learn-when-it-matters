@@ -40,6 +40,7 @@ separate protocol version: after the existing training-selected repeat count
 five raw batch totals (equally scaled totals are equivalent), cost uses total
 divided by `R`, and every segment and outlier remains in the record. Training
 eligibility, strict bins, and componentwise ceilings freeze before held-out
-work. RSS is recorded honestly from the process resource usage API, and an
+work. RSS is recorded as documented kilobytes from the explicit
+`process.resourceUsage().maxRSS` source, with no macOS `getrusage` conversion, and an
 external watchdog may not exceed 1,800 seconds. No new pilot or benchmark is
 authorized by this amendment.
