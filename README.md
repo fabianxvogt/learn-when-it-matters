@@ -20,11 +20,10 @@ npm run experiment -- --seeds=5 --horizon=240 --out=outputs/repeated-run.json
 
 The runner uses common seeds, searches a small train-only parameter grid across three update-budget slices, locks the selected policies before held-out streams, and writes per-seed results plus paired bootstrap intervals. It is intentionally small and CPU-only.
 
-The separate final measurement protocol is not the browser demo path. Two registered attempts were consumed; the bounded scientific attempt is now closed as inconclusive. See [RESULTS.md](RESULTS.md) for the public result boundary:
-
-```sh
-npm run experiment:final -- --out=work/final-investigation.json
-```
+The separate final measurement protocol is not the browser demo path. Two
+registered attempts were consumed; the bounded scientific attempt is now
+closed as inconclusive. Its raw artifacts stay private and the runner must not
+be used as a retry. See [RESULTS.md](RESULTS.md) for the public result boundary.
 
 It uses train-only calibration to select measured CPU/wall-time bins for both
 model families, retains complete paired held-out rows, and reports

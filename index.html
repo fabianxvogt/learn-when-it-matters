@@ -85,6 +85,7 @@
               <div class="progress-track"><div id="progressBar"></div></div>
             </div>
             <p class="helper-text" id="runStatus" role="status">Ready. The example stream is deterministic.</p>
+            <p class="field-note">Browser limit: 1,200 steps. Pause and cancel act at cooperative yield points.</p>
           </aside>
 
           <section class="results-panel">
@@ -94,7 +95,7 @@
                 <div class="result-actions">
                   <button class="text-button" id="saveButton" type="button">Save locally</button>
                   <button class="text-button" id="exportButton" type="button">Export JSON</button>
-                  <label id="importLabel" class="text-button file-button" for="importInput" tabindex="0" role="button">Import JSON<input id="importInput" type="file" accept="application/json,.json" /></label>
+                  <label id="importLabel" class="text-button file-button" for="importInput" tabindex="0" role="button">Import JSON<input id="importInput" type="file" accept="application/json,.json" tabindex="-1" /></label>
                 </div>
               </div>
               <div class="metric-strip">

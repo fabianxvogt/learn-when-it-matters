@@ -8,7 +8,7 @@ Classification: **EXPLORATORY**. The mechanism is a narrow empirical hypothesis 
 - Unit tests, local repeated-run protocol, and the supplied independent counterexample fixtures pass.
 - Browser QA covers desktop Chromium and a narrow mobile viewport, including a fresh run, refresh, save/reopen, export/import, malformed input, cancel/reset and visible errors.
 - Staged content contains no private planning, credentials, recordings, bulky dumps or hidden datasets.
-- Public preview is deployed from the accepted source. The final investigation runner and consumed K=5 result are independently reviewed; the current scientific attempt is closed as bounded inconclusive.
+- Any public preview or deploy must use an independently product-reviewed source. The final investigation runner and consumed K=5 result are independently reviewed; the current scientific attempt is closed as bounded inconclusive.
 
 ## Strongest counterargument
 
