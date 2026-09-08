@@ -1,3 +1,13 @@
+<!-- portfolio
+{
+  "title": "Learn When It Matters",
+  "topic": "Artificial intelligence/Learning systems",
+  "type": "research",
+  "description": "A bounded research instrument for selective learning updates. Results remain inconclusive.",
+  "demo": "https://learn-when-it-matters.fabian523417.chatgpt.site"
+}
+-->
+
 # Learn When It Matters
 
 Catalog project 1: a local-first selective online-learning laboratory. The browser app runs a seeded, browser-sized online regression comparison. The local runner adds a tiny recurrent learner, trains bounded policy parameters only on recurring training streams, then freezes them across held-out recurrence/noise settings and a never-repeating control.
